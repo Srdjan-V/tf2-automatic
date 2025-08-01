@@ -7,6 +7,10 @@ import hash from 'object-hash';
 export default function hashListing(
   listing: AddListingDto | RemoveListingDto,
 ): string {
+  if (listing.customId) {
+    return hash(listing.customId);
+  }
+
   if (listing.id) {
     return hash(listing.id);
   }

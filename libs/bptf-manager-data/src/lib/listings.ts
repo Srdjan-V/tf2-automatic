@@ -84,6 +84,15 @@ export class ListingDto {
   @IsString()
   @ValidateIf((o) => o.item === undefined)
   id?: string;
+
+  @ApiProperty({
+    description: 'Custom listing id',
+    example: 'buy;5021;6',
+    type: 'string',
+  })
+  @IsString()
+  @IsOptional()
+  customId?: string;
 }
 
 export class AddListingDto extends ListingDto {
@@ -99,16 +108,31 @@ export class AddListingDto extends ListingDto {
 
 export class RemoveListingDto extends ListingDto {
   @IsObject()
-  @ValidateIf((o) => o.id === undefined && o.hash === undefined)
+  @ValidateIf(
+    (o) =>
+      o.id === undefined && o.hash === undefined && o.customId === undefined,
+  )
   override item?: object;
 
   @IsString()
-  @ValidateIf((o) => o.item === undefined && o.hash === undefined)
+  @ValidateIf(
+    (o) =>
+      o.item === undefined && o.hash === undefined && o.customId === undefined,
+  )
   override id?: string;
 
   @IsString()
-  @ValidateIf((o) => o.id === undefined && o.item === undefined)
+  @ValidateIf(
+    (o) =>
+      o.item === undefined && o.id === undefined && o.customId === undefined,
+  )
   hash?: string;
+
+  @IsString()
+  @ValidateIf(
+    (o) => o.item === undefined && o.id === undefined && o.hash === undefined,
+  )
+  override customId?: string;
 }
 
 export class DesiredListingDto {

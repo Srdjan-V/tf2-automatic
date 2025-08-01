@@ -307,6 +307,51 @@ describe('DesiredListingsService', () => {
       );
     });
 
+    it('should delete desired listing using customId', async () => {
+      const remove: RemoveListingDto = {
+        customId: 'sell:2020;6',
+      };
+
+      const steamid = new SteamID('76561198120070906');
+
+      const existingDesired: DesiredListing = new DesiredListing(
+        steamid,
+        {
+          customId: remove.customId,
+          currencies: {
+            keys: 1,
+          },
+        },
+        0,
+      );
+
+      jest
+        .spyOn(DesiredListingsService.prototype, 'getDesiredByHashes')
+        .mockResolvedValue(
+          new Map([[existingDesired.getHash(), existingDesired]]),
+        );
+
+      await service.removeDesired(steamid, [remove]);
+
+      expectMockUsing(steamid, [hashListing(remove)]);
+
+      expect(mockRedis.hdel).toHaveBeenCalledTimes(1);
+      expect(mockRedis.hdel).toHaveBeenCalledWith(
+        'listings:desired:' + steamid.getSteamID64(),
+        existingDesired.getHash(),
+      );
+      expect(mockRedis.exec).toHaveBeenCalledTimes(1);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledTimes(1);
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'desired-listings.removed',
+        {
+          steamid,
+          desired: [existingDesired],
+        },
+      );
+    });
+
     it('should delete desired listing using hash', async () => {
       const listing: AddListingDto = {
         id: '1234',
