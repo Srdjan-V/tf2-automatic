@@ -56,7 +56,15 @@ export abstract class CustomWorkerHost<
     return Promise.resolve();
   }
 
-  postErrorHandler(
+  /**
+   * Called exactly once for every job failure: timeouts (too-old jobs) that
+   * never reach {@link processJob}, and normal processing errors alike. Runs
+   * inside the CLS scope with the final error after all transformations, so
+   * this is the place for inheritors to publish domain "failed"/"error"
+   * events or persist the failure. It must not throw; any rejection is caught
+   * and logged so it cannot mask the original error.
+   */
+  onJobFailed(
     job: CustomJob<DataType, ReturnType, NameType>,
     err: unknown,
   ): Promise<void> {
@@ -98,11 +106,31 @@ export abstract class CustomWorkerHost<
     // TODO: Allow ignoring max time?
     const maxTime = job.data?.retry?.maxTime ?? 120000;
 
-    // Check if job is too old
-    if (job.timestamp < Date.now() - maxTime) {
-      throw new UnrecoverableError('Job is too old');
-    }
+    try {
+      // Check if job is too old
+      if (job.timestamp < Date.now() - maxTime) {
+        throw new UnrecoverableError('Job is too old');
+      }
 
+      return await this.runProcessJob(job, maxTime);
+    } catch (err) {
+      // Guaranteed to run for every failure, including the too-old
+      // short-circuit above that never reaches processJob. Runs inside the
+      // CLS scope with the final (transformed) error so inheritors can
+      // reliably publish their domain failure events / persist the failure.
+      await this.onJobFailed(job, err).catch((hookErr) => {
+        this.logger.error('Error in onJobFailed handler');
+        console.error(hookErr);
+      });
+
+      throw err;
+    }
+  }
+
+  private runProcessJob(
+    job: CustomJob<DataType, ReturnType, NameType>,
+    maxTime: number,
+  ): Promise<unknown> {
     return this.processJob(job)
       .catch(async (err) => {
         await this.preErrorHandler(job, err);
@@ -132,9 +160,7 @@ export abstract class CustomWorkerHost<
         // Unknown error
         throw err;
       })
-      .catch(async (err) => {
-        await this.postErrorHandler(job, err);
-
+      .catch((err) => {
         // Check if job will be too old when it can be retried again
         const delay = customBackoffStrategy(job.attemptsMade, job);
         if (job.timestamp < Date.now() + delay - maxTime) {
