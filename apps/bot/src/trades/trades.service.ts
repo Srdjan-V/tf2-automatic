@@ -39,7 +39,11 @@ import { Logger } from '@nestjs/common/services';
 import { EventsService } from '../events/events.service';
 import fastq from 'fastq';
 import type { queueAsPromised } from 'fastq';
-import { EResult, ETradeOfferState } from 'steam-user';
+import {
+  EResult,
+  ETradeOfferState,
+  ETradeOfferConfirmationMethod,
+} from 'steam-user';
 import { InjectMetric } from '@willsoto/nestjs-prometheus';
 import type { Counter, Gauge } from 'prom-client';
 import sizeof from 'object-sizeof';
@@ -263,11 +267,74 @@ export class TradesService {
   private handleOffer(offer: ActualTradeOffer) {
     this.assertCreatedOffer(offer);
 
+    this.reconcileConfirmationMethod(offer);
+
     this.cache.set(offer.id, offer);
 
     this.ensureOfferPublishedQueue.push(offer).catch(() => {
       // Ignore error
     });
+  }
+
+  /**
+   * Keeps an offer's `confirmationMethod` stable across re-fetches.
+   *
+   * `confirmationMethod` describes a *separate* pending Steam confirmation, not a property of
+   * the trade-offer version: Steam does not carry it consistently across endpoints/polls and it
+   * does not bump `updatedAt`. So a routine poll of an unchanged offer can report `None` even
+   * while a mobile/email confirmation is genuinely outstanding. Because the cache is
+   * last-writer-wins, that poll would blank the value the accept/send flow established, and every
+   * reader (getTrade, the confirm guard, ensureConfirmationPublished) would then believe the
+   * offer needs no confirmation.
+   *
+   * We persist the last real method in poll-immune offerData and restore it whenever a fetch
+   * reports `None` while the offer is still in a state where a confirmation can be outstanding.
+   * The remembered value is cleared once the offer resolves (a trade id appears, or it leaves
+   * Active/CreatedNeedsConfirmation), at which point a `None` is authoritative.
+   */
+  private reconcileConfirmationMethod(offer: CreatedTradeOffer): void {
+    const None = SteamTradeOfferManager.EConfirmationMethod.None;
+
+    if (offer.confirmationMethod !== None) {
+      // Steam reported a real method — remember it so a later hollow poll can be corrected.
+      if (offer.data('lastConfirmationMethod') !== offer.confirmationMethod) {
+        offer.data('lastConfirmationMethod', offer.confirmationMethod);
+      }
+      return;
+    }
+
+    // A confirmation can only still be outstanding while no trade has resulted from the offer and:
+    //  - it is CreatedNeedsConfirmation (a sent offer awaiting our confirmation), or
+    //  - it is Active and received (an accepted incoming offer awaiting our mobile confirmation).
+    // An Active *sent* offer has already been confirmed/sent, so its None is authoritative.
+    const pendingConfirmation =
+      !offer.tradeID &&
+      (offer.state === ETradeOfferState.CreatedNeedsConfirmation ||
+        (offer.state === ETradeOfferState.Active && !offer.isOurOffer));
+
+    if (!pendingConfirmation) {
+      // Offer resolved — None is authoritative, drop any remembered method.
+      if (offer.data('lastConfirmationMethod') !== undefined) {
+        offer.data('lastConfirmationMethod', undefined);
+      }
+      return;
+    }
+
+    // Offer still pending but this fetch reported None: restore the last known method so the
+    // authoritative cache value is not silently downgraded.
+    const remembered = (offer.data() as TradeOfferData).lastConfirmationMethod;
+    if (remembered !== undefined) {
+      this.logger.warn(
+        `Offer #${offer.id} reported confirmationMethod None while a ${
+          ETradeOfferConfirmationMethod[remembered] ?? remembered
+        } confirmation is still pending (state ${
+          ETradeOfferState[offer.state]
+        }); restoring the remembered method to avoid a stale-cache downgrade`,
+      );
+      // `confirmationMethod` is typed readonly, but the offer is a plain mutable JS object at
+      // runtime; correcting the reported value here is the whole point of the reconcile.
+      (offer as { confirmationMethod: number }).confirmationMethod = remembered;
+    }
   }
 
   private ensurePollData(): void {

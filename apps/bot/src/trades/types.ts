@@ -6,6 +6,11 @@ export interface TradeOfferData {
   conf?: number;
   accept?: number;
   missing?: number;
+  // Last non-None confirmationMethod Steam reported for this offer. Persisted here (in
+  // pollData.offerData, which survives every re-fetch) so a later poll that omits the field
+  // cannot silently downgrade the cached confirmationMethod to None while a confirmation is
+  // still outstanding. See reconcileConfirmationMethod in trades.service.
+  lastConfirmationMethod?: SteamUser.ETradeOfferConfirmationMethod;
 }
 
 export type CreatedTradeOffer = TradeOffer & {
