@@ -11,6 +11,7 @@ patchedDependencies:
   '@types/steamcommunity': 5279185a387fa33d52e31772b008a12a247b674a417a96073c103ffb64f69c21
   kvparser@1.0.2: eaace29f7e05cfb36a2afeec82e5c7e1bd808c449ea40f4cc3509949c69007f3
   redlock@5.0.0-beta.2: 4958ecbcfae64a5f66f02db5c5f8189f127f0063fc4cedb1de6607f825e5f549
+  steam-tradeoffer-manager: f13164681bd6339314cfbf1612a87d6ce0471be57e92da8e1f3449206a25ce19
   tf2-currencies@1.2.4: 9cbad624be06780012c61459e0b4a14fad06b34623afb8296183eab2d733f331
   tf2@4.0.0: 9203a4235186bc5072d12d3cd10e8fbb48d41ffcac3e2e3a987af608474c5b3d
 
@@ -194,7 +195,7 @@ importers:
         version: 2.1.2
       steam-tradeoffer-manager:
         specifier: ^2.13.0
-        version: 2.13.0
+        version: 2.13.0(patch_hash=f13164681bd6339314cfbf1612a87d6ce0471be57e92da8e1f3449206a25ce19)
       steam-user:
         specifier: ^5.3.0
         version: 5.3.0
@@ -4299,6 +4300,7 @@ packages:
   cron-parser@4.9.0:
     resolution: {integrity: sha512-p0SaNjrHOnQeR8/VnfGbmg9te2kfyYSQ7Sc/j/6DtPL3JQvKxmjO9TSjNFpujqV3vEYYBvNNvXSxzyksBWAx1Q==}
     engines: {node: '>=12.0.0'}
+    deprecated: v4 is no longer maintained, upgrade to v5
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -17706,7 +17708,7 @@ snapshots:
 
   steam-totp@2.1.2: {}
 
-  steam-tradeoffer-manager@2.13.0:
+  steam-tradeoffer-manager@2.13.0(patch_hash=f13164681bd6339314cfbf1612a87d6ce0471be57e92da8e1f3449206a25ce19):
     dependencies:
       '@doctormckay/stdlib': 1.16.1
       async: 2.6.4
