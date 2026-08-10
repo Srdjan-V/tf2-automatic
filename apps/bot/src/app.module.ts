@@ -16,6 +16,7 @@ import { ProfileModule } from './profile/profile.module';
 import { EventsModule } from './events/events.module';
 import { MetadataModule } from './metadata/metadata.module';
 import { EscrowModule } from './escrow/escrow.module';
+import { NotificationModule } from './notification/notification.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
 import { ManagerModule } from './manager/manager.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -71,6 +72,7 @@ import { OpenTelemetryModule } from '@tf2-automatic/opentelemetry';
     EventsModule,
     MetadataModule,
     EscrowModule,
+    NotificationModule,
     ShutdownModule,
     ManagerModule,
     HttpModule.registerAsync({
