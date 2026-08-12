@@ -475,13 +475,16 @@ export class InventoriesService
     const key = this.getKeyFromObject(parts);
 
     return this.locker.using([key], LockDuration.SHORT, async (signal) => {
+      await this.redis.watch(key);
+
       const exists = await this.redis.exists(key);
       if (exists !== 1) {
-        // Can't update inventory if one does not exist
+        await this.redis.unwatch();
         return;
       }
 
       if (signal.aborted) {
+        await this.redis.unwatch();
         throw signal.error;
       }
 
@@ -490,7 +493,6 @@ export class InventoriesService
       const set = new Set<string>();
 
       if (gained.length > 0) {
-        // Set gained items
         const args = gained.flatMap((item) => {
           set.add(item.assetid);
           return ['item:' + item.assetid, pack(item)];
@@ -520,6 +522,7 @@ export class InventoriesService
         );
 
       if (signal.aborted) {
+        await this.redis.unwatch();
         throw signal.error;
       }
 
@@ -553,7 +556,10 @@ export class InventoriesService
         );
       }
 
-      await multi.exec();
+      const result = await multi.exec();
+      if (result === null) {
+        return;
+      }
     });
   }
 
