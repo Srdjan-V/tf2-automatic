@@ -145,7 +145,14 @@ export class BotService implements OnModuleDestroy {
     };
 
     this.community.on('postHttpRequest', (requestID, _, __, ___, response) => {
-      this.histogramEnds.get(requestID)?.(response?.statusCode ?? null);
+      // requestID is a monotonic counter, so every request adds a key that is
+      // never reused; without the delete the map retains one closure per Steam
+      // request for the lifetime of the process.
+      const end = this.histogramEnds.get(requestID);
+      if (end) {
+        this.histogramEnds.delete(requestID);
+        end(response?.statusCode ?? null);
+      }
     });
 
     const tradeConfig =
