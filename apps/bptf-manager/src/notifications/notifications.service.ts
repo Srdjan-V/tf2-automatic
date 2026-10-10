@@ -1,5 +1,5 @@
 import { HttpService } from '@nestjs/axios';
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Notification, Token } from '@tf2-automatic/bptf-manager-data';
 import { Redis } from 'ioredis';
@@ -14,7 +14,7 @@ import { pack, unpack } from 'msgpackr';
 import assert from 'assert';
 
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleDestroy {
   private readonly producer = new FlowProducer(this.queue.opts);
 
   private readonly redis: Redis = this.redisService.getOrThrow();
@@ -36,12 +36,15 @@ export class NotificationsService {
   }
 
   async refreshNotifications(steamid: SteamID): Promise<void> {
+    const time = Date.now();
+
     await this.producer.add(
       {
         name: 'done',
         queueName: this.queue.name,
         data: {
           steamid64: steamid.getSteamID64(),
+          time,
         },
         children: [
           {
@@ -49,6 +52,14 @@ export class NotificationsService {
             queueName: this.queue.name,
             data: {
               steamid64: steamid.getSteamID64(),
+              time,
+            },
+            opts: {
+              attempts: 5,
+              backoff: { type: 'exponential', delay: 5000 },
+              failParentOnFailure: true,
+              removeOnComplete: true,
+              removeOnFail: true,
             },
           },
         ],
@@ -58,6 +69,7 @@ export class NotificationsService {
           [this.queue.name]: {
             defaultJobOptions: {
               removeOnComplete: true,
+              removeOnFail: true,
             },
           },
         },
@@ -156,6 +168,7 @@ export class NotificationsService {
   private async createJob(job: Job<JobData>, skip?: number, limit?: number) {
     assert(job.parent, 'Job has no parent');
     assert(job.parent.id, 'Parent has no id');
+    assert(job.data.time, 'Notification job is missing a valid time value');
 
     await this.queue.add(
       'fetch',
@@ -166,6 +179,11 @@ export class NotificationsService {
         limit,
       },
       {
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 5000 },
+        failParentOnFailure: true,
+        removeOnComplete: true,
+        removeOnFail: true,
         jobId:
           job.data.steamid64 + ':' + job.data.time + ':' + skip + ':' + limit,
         parent: {
@@ -174,6 +192,10 @@ export class NotificationsService {
         },
       },
     );
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.producer.close();
   }
 
   private getKey(steamid: SteamID) {

@@ -1,11 +1,12 @@
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 import { TokensService } from '../tokens/tokens.service';
 import SteamID from 'steamid';
 import { AxiosError } from 'axios';
 import { NotificationsService } from './notifications.service';
 import { JobData } from './interfaces/queue';
+import { GetNotificationsResponse } from './interfaces/notifications';
 
 @Processor('notifications')
 export class NotificationsProcessor extends WorkerHost {
@@ -57,11 +58,24 @@ export class NotificationsProcessor extends WorkerHost {
 
     this.logger.debug(debugStr);
 
-    const response = await this.notificationsService.fetchNotifications(
-      token,
-      skip,
-      limit,
-    );
+    let response: GetNotificationsResponse;
+    try {
+      response = await this.notificationsService.fetchNotifications(
+        token,
+        skip,
+        limit,
+      );
+    } catch (error) {
+      if (
+        error instanceof AxiosError &&
+        [400, 401, 403, 404].includes(error.response?.status ?? 0)
+      ) {
+        throw new UnrecoverableError(
+          `Backpack.tf returned non-retryable status ${error.response?.status}`,
+        );
+      }
+      throw error;
+    }
 
     this.logger.debug(
       'Got notifications response for ' +
