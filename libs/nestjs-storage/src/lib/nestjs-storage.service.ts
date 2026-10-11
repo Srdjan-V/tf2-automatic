@@ -99,8 +99,6 @@ export class NestStorageService implements OnApplicationShutdown, OnModuleInit {
   async exists(relativePath: string): Promise<boolean> {
     const path = this.getPath(relativePath);
 
-    this.logger.debug(`Checking file "${path}"`);
-
     return this.engine.exists(path);
   }
 
@@ -111,8 +109,6 @@ export class NestStorageService implements OnApplicationShutdown, OnModuleInit {
       // Return cached promise
       return this._readPromises.get(path) as Promise<ReadFileResult>;
     }
-
-    this.logger.debug(`Reading file "${path}"`);
 
     const promise = this.engine.read(path).catch((err) => {
       this.logger.error(`Failed to read file "${path}": ${err.message}`);
