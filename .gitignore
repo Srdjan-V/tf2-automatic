@@ -47,6 +47,7 @@ Thumbs.db
 
 # nx
 /.nx
+/.pnpm-store/
 
 # vim
 *.vim
