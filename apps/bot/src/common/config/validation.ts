@@ -57,6 +57,18 @@ const validation = Joi.object({
     .min(1000)
     .when('BOT_MANAGER_ENABLED', whenManagerOptional),
   CACHE_RECENT_THRESHOLD: Joi.number().positive().integer().optional(),
+  INVENTORY_RATE_LIMIT_KEY: Joi.string().optional(),
+  INVENTORY_RATE_LIMIT_MIN_TIME: Joi.number().integer().min(0).optional(),
+  // Redis is optional for the bot; it only enables the shared inventory limit
+  REDIS_TYPE: Joi.string().valid('standalone', 'sentinel').optional(),
+  REDIS_HOST: Joi.string().optional(),
+  REDIS_PORT: Joi.number()
+    .integer()
+    .positive()
+    .when('REDIS_HOST', { is: Joi.exist(), then: Joi.required() }),
+  REDIS_PASSWORD: Joi.string().optional(),
+  REDIS_DB: Joi.number().integer().optional(),
+  REDIS_KEY_PREFIX: Joi.string().optional(),
 });
 
 export { validation };

@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BotModule } from './bot/bot.module';
-import configuration from './common/config/configuration';
+import configuration, {
+  Config,
+  isRedisConfigured,
+} from './common/config/configuration';
 import { validation } from './common/config/validation';
 import { NestStorageModule } from '@tf2-automatic/nestjs-storage';
 import { HealthModule } from './health/health.module';
@@ -16,7 +19,12 @@ import { EscrowModule } from './escrow/escrow.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
 import { ManagerModule } from './manager/manager.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { getStorageConfig, getUserAgent } from '@tf2-automatic/config';
+import {
+  getStorageConfig,
+  getUserAgent,
+  Redis as RedisConfig,
+} from '@tf2-automatic/config';
+import { RedisModule } from '@liaoliaots/nestjs-redis';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import {
   IdempotencyInterceptor,
@@ -84,6 +92,24 @@ import { OpenTelemetryModule } from '@tf2-automatic/opentelemetry';
       global: true,
       middleware: { mount: true },
     }),
+    ...(isRedisConfigured()
+      ? [
+          RedisModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: (configService: ConfigService<Config>) => {
+              const redisConfig =
+                configService.getOrThrow<RedisConfig.Config>('redis');
+              return {
+                readyLog: true,
+                config: {
+                  ...redisConfig,
+                  keyPrefix: redisConfig.keyPrefix + 'data:',
+                },
+              };
+            },
+          }),
+        ]
+      : []),
   ],
 })
 export class AppModule {}
