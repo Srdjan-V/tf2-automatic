@@ -5,6 +5,7 @@ import {
   getEnvWithDefault,
   getEventsConfig,
   getStorageConfig,
+  Redis,
   StorageConfig,
 } from '@tf2-automatic/config';
 
@@ -21,6 +22,9 @@ export interface Config {
   storage: StorageConfig;
   manager: ManagerConfig;
   cache: CacheConfig;
+  inventory: InventoryConfig;
+  /** Unset when the bot runs without Redis */
+  redis?: Redis.Config;
 }
 
 export interface SteamAccountConfig {
@@ -53,6 +57,23 @@ export interface ManagerConfig {
 
 export interface CacheConfig {
   recentThreshold: number;
+}
+
+export interface InventoryConfig {
+  /**
+   * When Redis is configured, bots with the same key share one Steam inventory
+   * rate limit through it; give a group of bots behind its own egress IP (a
+   * proxy) its own key. Without Redis each bot limits itself.
+   */
+  rateLimitKey: string;
+  minTime: number;
+}
+
+/** Redis is optional for the bot; it only enables the shared inventory limit */
+export function isRedisConfigured(): boolean {
+  return Boolean(
+    getEnv('REDIS_HOST', 'string') || getEnv('REDIS_SENTINELS', 'string'),
+  );
 }
 
 export default (): Config => {
@@ -117,5 +138,20 @@ export default (): Config => {
         5000,
       ),
     },
+    inventory: {
+      rateLimitKey: getEnvWithDefault(
+        'INVENTORY_RATE_LIMIT_KEY',
+        'string',
+        'default',
+      ),
+      // About one request every 4 seconds per IP is the community-reported
+      // safe pace for steamcommunity.com/inventory
+      minTime: getEnvWithDefault(
+        'INVENTORY_RATE_LIMIT_MIN_TIME',
+        'integer',
+        4000,
+      ),
+    },
+    redis: isRedisConfigured() ? Redis.getConfig() : undefined,
   };
 };
