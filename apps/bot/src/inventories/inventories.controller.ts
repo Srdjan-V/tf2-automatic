@@ -40,6 +40,13 @@ export class InventoriesController {
     example: true,
     required: false,
   })
+  @ApiQuery({
+    name: 'failFast',
+    description:
+      'Set to true to get a 429 instead of waiting while inventory requests back off. Defaults to false',
+    example: false,
+    required: false,
+  })
   @ApiOkResponse({
     type: [ItemModel],
   })
@@ -49,12 +56,15 @@ export class InventoriesController {
     @Param('contextid') contextid: number,
     @Query('tradableOnly', new ParseBoolPipe({ optional: true }))
     tradableOnly?: boolean,
+    @Query('failFast', new ParseBoolPipe({ optional: true }))
+    failFast?: boolean,
   ) {
     return this.inventoriesService.getInventory(
       steamid,
       appid,
       contextid,
       tradableOnly,
+      failFast,
     );
   }
 }

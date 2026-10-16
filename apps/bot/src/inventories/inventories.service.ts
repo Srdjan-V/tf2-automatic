@@ -32,6 +32,14 @@ import {
   toBottleneckSettings,
 } from './inventory-rate-limit';
 
+// Backoff left that a request waits for instead of failing. It covers the gap
+// to the previous request, which the backoff also holds
+const MAX_BACKOFF_WAIT = 5000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(ms, 0)));
+}
+
 /**
  * Steam rate limits its inventory endpoint per IP. With Redis configured, every
  * bot on the same rate limit key shares one limiter and one backoff; without it
@@ -43,7 +51,9 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
 
   private readonly manager = this.botService.getManager();
 
-  private readonly settings: RateLimitSettings;
+  // The settings in use, the strictest of all bots when shared
+  private settings: RateLimitSettings;
+  private lastRequestAt = 0;
   private readonly limiter: Bottleneck;
   private readonly backoff: Backoff;
 
@@ -69,6 +79,15 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       highWater: 3,
       strategy: Bottleneck.strategy.OVERFLOW,
     };
+
+    // steamcommunity requests the pages of an inventory back to back; only one
+    // inventory at a time is in the slot, so this spaces its pages too
+    botService.setPreHttpRequestHook(async (options) => {
+      if (options.url.startsWith('https://steamcommunity.com/inventory/')) {
+        await sleep(this.lastRequestAt + this.settings.minTime - Date.now());
+        this.lastRequestAt = Date.now();
+      }
+    });
 
     if (!redisService) {
       this.limiter = new Bottleneck(options);
@@ -127,17 +146,30 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
           JSON.stringify(this.settings),
         );
 
-        const all = Object.values(await shared.redis.hgetall(settingsKey)).map(
-          (raw) => JSON.parse(raw) as RateLimitSettings,
-        );
-        const settings = strictestSettings(all);
+        const settings = await this.sharedSettings();
 
         await this.limiter.updateSettings(toBottleneckSettings(settings));
+        this.settings = settings;
         this.logger.log(
           `Applied shared inventory rate limit "${shared.key}" ${JSON.stringify(settings)}`,
         );
       },
     );
+  }
+
+  /**
+   * The strictest settings of all bots on the key. A bot that boots later with
+   * stricter settings changes them, so they are read again for each inventory
+   */
+  private async sharedSettings(): Promise<RateLimitSettings> {
+    if (!this.shared) {
+      return this.settings;
+    }
+
+    const all = Object.values(
+      await this.shared.redis.hgetall(this.shared.key + ':settings'),
+    ).map((raw) => JSON.parse(raw) as RateLimitSettings);
+    return strictestSettings([this.settings, ...all]);
   }
 
   async onModuleDestroy() {
@@ -149,26 +181,36 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
     appid: number,
     contextid: number,
     tradableOnly = true,
+    failFast = false,
   ): Promise<Inventory> {
     return this.limiter
       .schedule(async () => {
-        // Waiting here holds the limiter slot, so with a shared limit every bot
-        // on the key backs off together
-        const difference = await this.backoff.remaining();
-        if (difference > 0) {
-          await new Promise((resolve) => {
-            setTimeout(resolve, difference);
-          });
-        }
+        this.settings = await this.sharedSettings();
 
+        // A caller that retries 429s can fail fast instead of holding the
+        // slot through a block. A short rest of the backoff, such as the gap
+        // to the previous request, is always waited out
+        const remaining = await this.backoff.remaining();
+        if (
+          failFast &&
+          remaining > Math.max(MAX_BACKOFF_WAIT, this.settings.minTime)
+        ) {
+          throw new HttpException(
+            `Inventory requests are backing off for ${Math.ceil(remaining / 1000)}s`,
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+        }
+        await sleep(remaining);
+
+        // The slot is held for every page, so a started inventory finishes
         return this.fetchInventory(steamid, appid, contextid, tradableOnly)
           .then(async (inventory) => {
-            await this.updateBackoff(() => this.backoff.reset());
+            await this.updateBackoff(() => this.backoff.decrease(this.gap()));
             return inventory;
           })
           .catch(async (err) => {
             if (err instanceof UnauthorizedException) {
-              await this.updateBackoff(() => this.backoff.reset());
+              await this.updateBackoff(() => this.backoff.decrease(this.gap()));
             } else {
               await this.updateBackoff(() => this.backoff.increase());
             }
@@ -186,6 +228,14 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
 
         throw err;
       });
+  }
+
+  /**
+   * Time until the next request is allowed. minTime only spaces the starts of
+   * slots, so the backoff carries the gap after the last page to the next bot
+   */
+  private gap(): number {
+    return this.lastRequestAt + this.settings.minTime - Date.now();
   }
 
   private async updateBackoff(update: () => Promise<void>): Promise<void> {
