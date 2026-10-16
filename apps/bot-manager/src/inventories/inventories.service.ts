@@ -58,6 +58,8 @@ interface InventoryIdentifier {
 }
 
 export const INVENTORY_EXPIRE_TIME = 600;
+// Long enough for a job to wait out the bots' longest inventory backoff
+const INVENTORY_JOB_MAX_TIME = 4 * 60 * 1000;
 
 @Injectable()
 export class InventoriesService
@@ -130,7 +132,13 @@ export class InventoriesService
         contextid,
         ttl: dto.ttl,
       },
-      dto,
+      {
+        ...dto,
+        retry: {
+          maxTime: INVENTORY_JOB_MAX_TIME,
+          ...dto.retry,
+        },
+      },
     );
   }
 
@@ -146,7 +154,9 @@ export class InventoriesService
           .replace(':steamid', steamid.getSteamID64())
           .replace(':appid', appid.toString())
           .replace(':contextid', contextid),
-        { params: { tradableOnly: false } },
+        // The job retries 429s, so a bot that backs off fails fast instead
+        // of using up the job's time
+        { params: { tradableOnly: false, failFast: true } },
       ),
     );
 
