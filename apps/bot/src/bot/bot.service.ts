@@ -58,6 +58,11 @@ export const STEAM_COMMUNITY_HEADERS = {
   'accept-language': 'en-US,en;q=0.9',
 };
 
+export type PreHttpRequestHook = (options: {
+  url: string;
+  method?: string;
+}) => Promise<void>;
+
 @Injectable()
 export class BotService implements OnModuleDestroy {
   private logger = new Logger(BotService.name);
@@ -93,6 +98,7 @@ export class BotService implements OnModuleDestroy {
   private playing = false;
 
   private histogramEnds: Map<string, HistogramEndCallback> = new Map();
+  private preHttpRequest: PreHttpRequestHook = () => Promise.resolve();
 
   private readonly steamApiRequestDuration = metrics
     .getMeter('bot')
@@ -133,16 +139,26 @@ export class BotService implements OnModuleDestroy {
         method: options.method ?? 'GET',
         url: url.toString().replace(/\/\d+/g, '/:number'),
       };
-      const start = process.hrtime.bigint();
 
-      this.histogramEnds.set(requestID, (status) => {
-        const seconds = Number(process.hrtime.bigint() - start) / 1e9;
-        this.steamApiRequestDuration.record(
-          seconds,
-          metricAttributes({ ...attributes, status }),
-        );
-      });
-      continueRequest();
+      // A failing hook must not hang the request
+      this.preHttpRequest(options)
+        .catch((err) => {
+          this.logger.warn(`Pre HTTP request hook failed: ${err.message}`);
+        })
+        .finally(() => {
+          const start = process.hrtime.bigint();
+
+          this.histogramEnds.set(requestID, (status) => {
+            const seconds = Number(process.hrtime.bigint() - start) / 1e9;
+            this.steamApiRequestDuration.record(
+              seconds,
+              metricAttributes({ ...attributes, status }),
+            );
+          });
+          continueRequest();
+        });
+      // The request continues when the hook is done
+      return true;
     };
 
     this.community.on('postHttpRequest', (requestID, _, __, ___, response) => {
@@ -321,6 +337,11 @@ export class BotService implements OnModuleDestroy {
 
   getCommunity(): SteamCommunity {
     return this.community;
+  }
+
+  /** Runs before every Steam community request; the request waits for it */
+  setPreHttpRequestHook(hook: PreHttpRequestHook) {
+    this.preHttpRequest = hook;
   }
 
   private setGamesAndState() {
