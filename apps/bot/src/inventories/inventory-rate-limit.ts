@@ -20,12 +20,24 @@ export function toBottleneckSettings(
   return { maxConcurrent: 1, minTime: settings.minTime };
 }
 
+/**
+ * Steam keeps a rate limited IP blocked for minutes, so short retries only
+ * extend the block. Each failure doubles the wait from 30s up to 3 minutes.
+ */
+export function backoffDelay(attempts: number): number {
+  return calculateBackoff(attempts, 'exponential', 30000, 180000);
+}
+
 /** Backoff after failed inventory requests */
 export interface Backoff {
-  /** Milliseconds to wait before the next request, if positive */
+  /** Milliseconds until requests are allowed again, if positive */
   remaining(): Promise<number>;
   increase(): Promise<void>;
-  reset(): Promise<void>;
+  /**
+   * One success steps the backoff down one level, it does not reset it. The
+   * next request waits gap milliseconds, the minimum time after this one
+   */
+  decrease(gap: number): Promise<void>;
 }
 
 export function localBackoff(): Backoff {
@@ -36,10 +48,11 @@ export function localBackoff(): Backoff {
     remaining: async () => attemptAt - Date.now(),
     increase: async () => {
       attempts++;
-      attemptAt = Date.now() + calculateBackoff(attempts);
+      attemptAt = Date.now() + backoffDelay(attempts);
     },
-    reset: async () => {
-      attempts = 0;
+    decrease: async (gap) => {
+      attempts = Math.max(0, attempts - 1);
+      attemptAt = Date.now() + gap;
     },
   };
 }
@@ -56,10 +69,15 @@ export function redisBackoff(redis: Redis, key: string): Backoff {
     increase: async () => {
       const attempts = await redis.incr(attemptsKey);
       await redis.expire(attemptsKey, ATTEMPTS_TTL_SECONDS);
-      await redis.set(blockedKey, '1', 'PX', calculateBackoff(attempts));
+      await redis.set(blockedKey, '1', 'PX', backoffDelay(attempts));
     },
-    reset: async () => {
-      await redis.del(attemptsKey);
+    decrease: async (gap) => {
+      if ((await redis.decr(attemptsKey)) <= 0) {
+        await redis.del(attemptsKey);
+      }
+      if (gap > 0) {
+        await redis.set(blockedKey, '1', 'PX', gap);
+      }
     },
   };
 }
