@@ -21,6 +21,12 @@ export function mergeDefinitionPrefab(
         mergeDefinitionPrefab(write, match, schemaPrefabs);
       }
     }
+
+    // Several prefabs are merged on their own first, so the first one listed wins; they still have
+    // to reach the item, or every multi-prefab item ("valve taunt") loses its capabilities.
+    if (write !== writeItem) {
+      recursiveInheritKeyValues(writeItem, write);
+    }
   }
 
   recursiveInheritKeyValues(writeItem, sourceItem);
