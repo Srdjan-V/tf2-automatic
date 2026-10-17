@@ -292,5 +292,84 @@ describe('TF2GCParser', () => {
       expect(parsed.tradable).toEqual(true);
       expect(parsed.paint).toEqual(211);
     });
+
+    // The cases below are real GC entries that Steam's own inventory disagreed with.
+
+    it('will not make a purchased key craftable without can_craft_if_purchased', async () => {
+      // Robo Key 2013: Steam shows "( Not Usable in Crafting )"
+      const item = { ...TestData.getBasicItem(), def_index: 5636 };
+
+      const [extracted, context] = parser.extract(item);
+
+      schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
+        name: 'Robo Key 2013',
+        static_attrs: { 'is commodity': '1' },
+      } satisfies ItemsGameItem);
+
+      const parsed = await parser.parse(extracted, context);
+
+      expect(parsed.craftable).toEqual(false);
+      expect(parsed.tradable).toEqual(true);
+    });
+
+    it('will make a purchased item craftable with can_craft_if_purchased', async () => {
+      // Results Are In Taunt, capabilities from its "taunt" prefab
+      const item = { ...TestData.getBasicItem(), def_index: 1109 };
+
+      const [extracted, context] = parser.extract(item);
+
+      schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
+        name: 'Results Are In Taunt',
+        capabilities: { nameable: '1', can_craft_if_purchased: '1' },
+      } satisfies ItemsGameItem);
+
+      const parsed = await parser.parse(extracted, context);
+
+      expect(parsed.craftable).toEqual(true);
+    });
+
+    it('will not make a free contract reward tradable', async () => {
+      // The Dragon's Fury: Steam shows "( Free Contract Reward: Not Tradable or Marketable )"
+      const item = {
+        ...TestData.getBasicItem(),
+        def_index: 1178,
+        level: 30,
+        flags: 0,
+        origin: 29,
+      };
+
+      const [extracted, context] = parser.extract(item);
+
+      schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
+        name: "The Dragon's Fury",
+        capabilities: { nameable: '1' },
+      } satisfies ItemsGameItem);
+
+      const parsed = await parser.parse(extracted, context);
+
+      expect(parsed.tradable).toEqual(false);
+    });
+
+    it('will take the paintkit of a war paint from its definition', async () => {
+      // Smissmas Sweater War Paint (Factory New): econ reads paintkit 391
+      const item = {
+        ...TestData.getBasicItem(),
+        def_index: 16391,
+        quality: 15,
+        flags: 0,
+        origin: 0,
+      };
+
+      const [extracted, context] = parser.extract(item);
+
+      schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
+        name: 'Paintkit 391',
+        static_attrs: { paintkit_proto_def_index: '391' },
+      } satisfies ItemsGameItem);
+
+      const parsed = await parser.parse(extracted, context);
+
+      expect(parsed.paintkit).toEqual(391);
+    });
   });
 });
