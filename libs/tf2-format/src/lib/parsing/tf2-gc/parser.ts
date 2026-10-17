@@ -15,6 +15,7 @@ import { TF2Parser } from '../tf2/parser';
 enum AttributeTokens {
   'cannot trade' = 153,
   'always tradable' = 195,
+  'tradable after date' = 211,
   'expiration date' = 302,
   'never craftable' = 449,
   'non economy' = 777,
@@ -47,7 +48,7 @@ const ATTRIBUTE_SEPERATOR = '|\x01\x02\x01\x03|\x01\x02\x01\x03|';
 
 export class TF2GCParser extends TF2Parser<TF2GCItem, Context> {
   extract(item: TF2GCItem): [ExtractedTF2GCItem, Context] {
-    const [attributes, defindexes] = this.getAttributes(item);
+    const [attributes, defindexes, tradableAfter] = this.getAttributes(item);
 
     return [
       this.createExtractedItem(item, attributes),
@@ -55,12 +56,16 @@ export class TF2GCParser extends TF2Parser<TF2GCItem, Context> {
         flags: item.flags,
         origin: item.origin,
         attributes: defindexes,
+        tradableAfter,
       },
     ];
   }
 
-  private getAttributes(item: TF2GCItem): [Partial<Attributes>, Set<number>] {
+  private getAttributes(
+    item: TF2GCItem,
+  ): [Partial<Attributes>, Set<number>, number | null] {
     const result: Partial<Attributes> = {};
+    let tradableAfter: number | null = null;
 
     const inputs: RecipeInput[] = [];
 
@@ -75,6 +80,9 @@ export class TF2GCParser extends TF2Parser<TF2GCItem, Context> {
       const value = Buffer.from(attribute.value_bytes as any);
 
       switch (attribute.def_index) {
+        case AttributeTokens['tradable after date']:
+          tradableAfter = value.readUInt32LE(0);
+          break;
         case 2000:
         case 2001:
         case 2002:
@@ -176,13 +184,20 @@ export class TF2GCParser extends TF2Parser<TF2GCItem, Context> {
       result.inputs = inputs;
     }
 
-    return [result, defindexes];
+    return [result, defindexes, tradableAfter];
   }
 
   private static isCraftable(
     schemaItem: ItemsGameItem,
     context: Context,
   ): boolean {
+    if (
+      (context.flags & eEconItemFlags.kEconItemFlag_CannotBeUsedInCrafting) !==
+      0
+    ) {
+      return false;
+    }
+
     // Always craftable
     if (
       context.attributes.has(AttributeTokens['always tradable']) ||
@@ -199,11 +214,7 @@ export class TF2GCParser extends TF2Parser<TF2GCItem, Context> {
       return false;
     }
 
-    // Temporary item
-    if (
-      context.attributes.has(AttributeTokens['expiration date']) ||
-      TF2GCParser.hasAttribute('expiration date', schemaItem)
-    ) {
+    if (TF2GCParser.isTemporary(schemaItem, context)) {
       return false;
     }
 
@@ -241,7 +252,20 @@ export class TF2GCParser extends TF2Parser<TF2GCItem, Context> {
   ): boolean {
     if (
       context.attributes.has(AttributeTokens['non economy']) ||
-      this.hasAttribute('non economy', schemaItem)
+      this.hasAttribute('non economy', schemaItem) ||
+      (context.flags & eEconItemFlags.kEconItemFlag_NonEconomy) !== 0
+    ) {
+      return false;
+    }
+
+    if (this.isTemporary(schemaItem, context)) {
+      return false;
+    }
+
+    // Held until a date, whatever else the item allows
+    if (
+      context.tradableAfter !== null &&
+      context.tradableAfter > Math.floor(Date.now() / 1000)
     ) {
       return false;
     }
@@ -266,6 +290,7 @@ export class TF2GCParser extends TF2Parser<TF2GCItem, Context> {
       case eEconItemOrigin.kEconItemOrigin_Foreign:
       case eEconItemOrigin.kEconItemOrigin_PreviewItem:
       case eEconItemOrigin.kEconItemOrigin_SteamWorkshopContribution:
+      case eEconItemOrigin.kEconItemOrigin_QuestLoanerItem:
       case eEconItemOrigin.kEconItemOrigin_UntradableFreeContractReward:
         return false;
     }
@@ -283,6 +308,20 @@ export class TF2GCParser extends TF2Parser<TF2GCItem, Context> {
     }
 
     return true;
+  }
+
+  /**
+   * An item that expires. The expiration date is a timestamp, so only its presence counts.
+   */
+  private static isTemporary(
+    schemaItem: ItemsGameItem,
+    context: Context,
+  ): boolean {
+    return (
+      context.attributes.has(AttributeTokens['expiration date']) ||
+      schemaItem.attributes?.['expiration date'] !== undefined ||
+      schemaItem.static_attrs?.['expiration date'] !== undefined
+    );
   }
 
   private static hasAttribute(

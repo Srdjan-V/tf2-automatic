@@ -371,5 +371,101 @@ describe('TF2GCParser', () => {
 
       expect(parsed.paintkit).toEqual(391);
     });
+
+    // Restrictions TF2 places on an item that no bot inventory held when these were written.
+
+    function uint32Attribute(defIndex: number, value: number) {
+      const bytes = Buffer.alloc(4);
+      bytes.writeUInt32LE(value);
+      return {
+        def_index: defIndex,
+        value: null,
+        value_bytes: { type: 'Buffer' as const, data: [...bytes] },
+      };
+    }
+
+    async function parse(
+      overrides: Partial<ReturnType<typeof TestData.getBasicItem>>,
+      schemaItem: ItemsGameItem = { name: 'Item' },
+    ) {
+      const [extracted, context] = parser.extract({
+        ...TestData.getBasicItem(),
+        def_index: 1178,
+        flags: 0,
+        origin: 0,
+        ...overrides,
+      });
+      schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue(schemaItem);
+      return parser.parse(extracted, context);
+    }
+
+    it('will not make an item flagged as not usable in crafting craftable', async () => {
+      const parsed = await parse({ flags: 1 << 1 });
+
+      expect(parsed.craftable).toEqual(false);
+    });
+
+    it('will not make an item flagged as non economy tradable', async () => {
+      const parsed = await parse({ flags: 1 << 3 });
+
+      expect(parsed.tradable).toEqual(false);
+    });
+
+    it('will not make an item tradable before its tradable after date', async () => {
+      const tomorrow = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
+
+      const parsed = await parse(
+        { attribute: [uint32Attribute(211, tomorrow)] },
+        // The hold applies even to an item that is otherwise always tradable
+        {
+          name: 'Item',
+          attributes: {
+            'always tradable': {
+              attribute_class: 'always_tradable',
+              value: '1',
+            },
+          },
+        },
+      );
+
+      expect(parsed.tradable).toEqual(false);
+    });
+
+    it('will make an item tradable once its tradable after date has passed', async () => {
+      const parsed = await parse({ attribute: [uint32Attribute(211, 1)] });
+
+      expect(parsed.tradable).toEqual(true);
+    });
+
+    it('will not make a temporary item tradable or craftable', async () => {
+      const nextWeek = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
+
+      const parsed = await parse({
+        attribute: [uint32Attribute(302, nextWeek)],
+      });
+
+      expect(parsed.tradable).toEqual(false);
+      expect(parsed.craftable).toEqual(false);
+    });
+
+    it('will not make an item whose definition expires tradable or craftable', async () => {
+      // The definition holds a timestamp, never '1'
+      const parsed = await parse(
+        {},
+        {
+          name: 'Item',
+          static_attrs: { 'expiration date': '1735689600' },
+        },
+      );
+
+      expect(parsed.tradable).toEqual(false);
+      expect(parsed.craftable).toEqual(false);
+    });
+
+    it('will not make a quest loaner item tradable', async () => {
+      const parsed = await parse({ origin: 24 });
+
+      expect(parsed.tradable).toEqual(false);
+    });
   });
 });
