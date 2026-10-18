@@ -10,22 +10,12 @@ import { AgentOptions } from 'node:http';
 export class S3StorageEngine implements StorageEngine {
   private readonly logger = new Logger(S3StorageEngine.name);
 
-  private readonly agentOptions = {
-    keepAlive: this.config.keepAlive,
-    maxSockets: this.config.maxSockets,
-  } as AgentOptions;
-
-  private readonly agent = this.config.useSSL
-    ? new HttpsAgent(this.agentOptions)
-    : new HttpAgent(this.agentOptions);
-
   private readonly client = new Minio.Client({
     endPoint: this.config.endpoint,
     port: this.config.port,
     useSSL: this.config.useSSL,
     accessKey: this.config.accessKeyId,
     secretKey: this.config.secretAccessKey,
-    transportAgent: this.agent,
   });
 
   constructor(private readonly config: S3StorageConfig) {}
