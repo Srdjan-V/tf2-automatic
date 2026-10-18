@@ -293,17 +293,79 @@ describe('TF2GCParser', () => {
       expect(parsed.paint).toEqual(211);
     });
 
-    // The cases below are real GC entries that Steam's own inventory disagreed with.
-
-    it('will not make a purchased key craftable without can_craft_if_purchased', async () => {
-      // Robo Key 2013: Steam shows "( Not Usable in Crafting )"
-      const item = { ...TestData.getBasicItem(), def_index: 5636 };
+    it('will not make self-made items craftable', async () => {
+      const item = TestData.getUnusualAndPainted();
+      item.quality = 9;
 
       const [extracted, context] = parser.extract(item);
 
       schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
-        name: 'Robo Key 2013',
-        static_attrs: { 'is commodity': '1' },
+        name: "The Crone's Dome",
+      } satisfies ItemsGameItem);
+      schema.getPaintByColor = jest.fn().mockReturnValue(211);
+
+      const parsed = await parser.parse(extracted, context);
+
+      expect(parsed.craftable).toEqual(false);
+      expect(parsed.tradable).toEqual(false);
+    });
+
+    it('will not make temporary items tradable', async () => {
+      const item = TestData.getUnusualAndPainted();
+
+      const [extracted, context] = parser.extract(item);
+
+      schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
+        name: "The Crone's Dome",
+        static_attrs: {
+          'expiration date': '1',
+        },
+      } satisfies ItemsGameItem);
+      schema.getPaintByColor = jest.fn().mockReturnValue(211);
+
+      const parsed = await parser.parse(extracted, context);
+
+      expect(parsed.craftable).toEqual(false);
+      expect(parsed.tradable).toEqual(false);
+    });
+
+    it('will not make free contract rewards tradable', async () => {
+      const item = {
+        ...TestData.getBasicItem(),
+        id: '7897088103',
+        account_id: 454318713,
+        inventory: 2147485394,
+        def_index: 1178,
+        level: 30,
+        flags: 0,
+        origin: 29,
+        original_id: null,
+        position: 1746,
+      };
+
+      const [extracted, context] = parser.extract(item);
+
+      schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
+        name: "The Dragon's Fury",
+      } satisfies ItemsGameItem);
+
+      const parsed = await parser.parse(extracted, context);
+
+      expect(parsed.tradable).toEqual(false);
+    });
+
+    it('will not make purchased items craftable without can_craft_if_purchased', async () => {
+      const item = {
+        ...TestData.getBasicItem(),
+        def_index: 725,
+        origin: 2,
+        flags: 20,
+      };
+
+      const [extracted, context] = parser.extract(item);
+
+      schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
+        name: 'Tour of Duty Ticket',
       } satisfies ItemsGameItem);
 
       const parsed = await parser.parse(extracted, context);
@@ -312,15 +374,19 @@ describe('TF2GCParser', () => {
       expect(parsed.tradable).toEqual(true);
     });
 
-    it('will make a purchased item craftable with can_craft_if_purchased', async () => {
-      // Results Are In Taunt, capabilities from its "taunt" prefab
-      const item = { ...TestData.getBasicItem(), def_index: 1109 };
+    it('will make purchased items craftable with can_craft_if_purchased', async () => {
+      const item = {
+        ...TestData.getBasicItem(),
+        def_index: 30921,
+        origin: 2,
+        flags: 20,
+      };
 
       const [extracted, context] = parser.extract(item);
 
       schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
-        name: 'Results Are In Taunt',
-        capabilities: { nameable: '1', can_craft_if_purchased: '1' },
+        name: "Taunt: Runner's Rhythm",
+        capabilities: { can_craft_count: '1', can_craft_if_purchased: '1' },
       } satisfies ItemsGameItem);
 
       const parsed = await parser.parse(extracted, context);
@@ -328,65 +394,98 @@ describe('TF2GCParser', () => {
       expect(parsed.craftable).toEqual(true);
     });
 
-    it('will not make a free contract reward tradable', async () => {
-      // The Dragon's Fury: Steam shows "( Free Contract Reward: Not Tradable or Marketable )"
+    it('will take the paintkit of war paints from the definition', async () => {
       const item = {
         ...TestData.getBasicItem(),
-        def_index: 1178,
-        level: 30,
-        flags: 0,
-        origin: 29,
-      };
-
-      const [extracted, context] = parser.extract(item);
-
-      schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
-        name: "The Dragon's Fury",
-        capabilities: { nameable: '1' },
-      } satisfies ItemsGameItem);
-
-      const parsed = await parser.parse(extracted, context);
-
-      expect(parsed.tradable).toEqual(false);
-    });
-
-    it('will take the paintkit of a war paint from its definition', async () => {
-      // Smissmas Sweater War Paint (Factory New): econ reads paintkit 391
-      const item = {
-        ...TestData.getBasicItem(),
-        def_index: 16391,
+        def_index: 16139,
         quality: 15,
-        flags: 0,
-        origin: 0,
+        origin: 8,
+        flags: 4,
       };
 
       const [extracted, context] = parser.extract(item);
 
       schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
-        name: 'Paintkit 391',
-        static_attrs: { paintkit_proto_def_index: '391' },
+        name: 'Paintkit 139',
+        static_attrs: { paintkit_proto_def_index: '139' },
       } satisfies ItemsGameItem);
 
       const parsed = await parser.parse(extracted, context);
 
-      expect(parsed.paintkit).toEqual(391);
+      expect(parsed.paintkit).toEqual(139);
     });
 
-    // Restrictions TF2 places on an item that no bot inventory held when these were written.
+    const paintCan = {
+      attribute: [
+        {
+          def_index: 153,
+          value: null,
+          value_bytes: { type: 'Buffer' as const, data: [0, 0, 0, 0] },
+        },
+      ],
+      id: '15280280552',
+      def_index: 5031,
+      quantity: 1,
+      level: 5,
+      quality: 6,
+      flags: 0,
+      origin: 6,
+      inventory: 2147485382,
+      account_id: 454318713,
+      equipped_state: [],
+      custom_name: null,
+      custom_desc: null,
+      interior_item: null,
+      in_use: false,
+      style: 0,
+      original_id: null,
+      contains_equipped_state: null,
+      contains_equipped_state_v2: true,
+      position: 1734,
+    };
+
+    const tint = {
+      'set item tint RGB': {
+        attribute_class: 'set_item_tint_rgb',
+        value: '8208497',
+      },
+    };
+
+    it('will take the paint of paint cans from the definition', async () => {
+      const [extracted, context] = parser.extract(paintCan);
+
+      schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
+        name: 'Paint Can 6',
+        tool: { type: 'paint_can' },
+        attributes: tint,
+      } satisfies ItemsGameItem);
+      schema.getPaintByColor = jest.fn().mockReturnValue(5031);
+
+      const parsed = await parser.parse(extracted, context);
+
+      expect(schema.getPaintByColor).toHaveBeenCalledWith('7d4071');
+      expect(parsed.paint).toEqual(5031);
+    });
+
+    it('will not give a paint to non paint cans with a tint', async () => {
+      const [extracted, context] = parser.extract(paintCan);
+
+      schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue({
+        name: 'Halloween Spell: Putrescent Pigmentation',
+        tool: { type: 'apply_custom_attrib' },
+        attributes: tint,
+      } satisfies ItemsGameItem);
+      schema.getPaintByColor = jest.fn().mockReturnValue(5031);
+
+      const parsed = await parser.parse(extracted, context);
+
+      expect(schema.getPaintByColor).not.toHaveBeenCalled();
+      expect(parsed.paint).toEqual(null);
+    });
 
     function uint32Attribute(defIndex: number, value: number) {
       const bytes = Buffer.alloc(4);
       bytes.writeUInt32LE(value);
-      return {
-        def_index: defIndex,
-        value: null,
-        value_bytes: { type: 'Buffer' as const, data: [...bytes] },
-      };
-    }
-
-    function floatAttribute(defIndex: number, value: number) {
-      const bytes = Buffer.alloc(4);
-      bytes.writeFloatLE(value);
       return {
         def_index: defIndex,
         value: null,
@@ -403,172 +502,86 @@ describe('TF2GCParser', () => {
         def_index: 1178,
         flags: 0,
         origin: 0,
+        attribute: [],
         ...overrides,
       });
       schema.getItemsGameItemByDefindex = jest.fn().mockReturnValue(schemaItem);
       return parser.parse(extracted, context);
     }
 
-    it('will not make an item flagged as not usable in crafting craftable', async () => {
-      const parsed = await parse({ flags: 1 << 1 });
+    const alwaysTradable: ItemsGameItem = {
+      name: 'Item',
+      attributes: {
+        'always tradable': { attribute_class: 'always_tradable', value: '1' },
+      },
+    };
 
-      expect(parsed.craftable).toEqual(false);
+    it('will make a plain item craftable and tradable', async () => {
+      const parsed = await parse({});
+
+      expect(parsed.craftable).toEqual(true);
+      expect(parsed.tradable).toEqual(true);
     });
 
-    it('will not make an item flagged as non economy tradable', async () => {
-      const parsed = await parse({ flags: 1 << 3 });
+    it('will not make non economy items craftable or tradable', async () => {
+      const parsed = await parse({ flags: 1 << 3 }, alwaysTradable);
 
+      expect(parsed.craftable).toEqual(false);
       expect(parsed.tradable).toEqual(false);
     });
 
-    it('will not make an item tradable before its tradable after date', async () => {
+    it('will not make items flagged as not usable in crafting craftable', async () => {
+      const parsed = await parse({ flags: 1 << 1 });
+
+      expect(parsed.craftable).toEqual(false);
+      expect(parsed.tradable).toEqual(true);
+    });
+
+    it('will make always tradable items craftable even when flagged as not usable in crafting', async () => {
+      const parsed = await parse({ flags: 1 << 1 }, alwaysTradable);
+
+      expect(parsed.craftable).toEqual(true);
+    });
+
+    it('will not make preview items craftable', async () => {
+      const parsed = await parse({ origin: 17 });
+
+      expect(parsed.craftable).toEqual(false);
+      expect(parsed.tradable).toEqual(false);
+    });
+
+    it('will not make quest loaner items craftable or tradable', async () => {
+      const parsed = await parse({ attribute: [uint32Attribute(2051, 1)] });
+
+      expect(parsed.craftable).toEqual(false);
+      expect(parsed.tradable).toEqual(false);
+    });
+
+    it('will not make items whose definition expires craftable or tradable', async () => {
+      const parsed = await parse(
+        {},
+        { name: 'Item', expiration_date: '2014-11-11 01:00:00' },
+      );
+
+      expect(parsed.craftable).toEqual(false);
+      expect(parsed.tradable).toEqual(false);
+    });
+
+    it('will not make items tradable before their tradable after date', async () => {
       const tomorrow = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
 
       const parsed = await parse(
         { attribute: [uint32Attribute(211, tomorrow)] },
-        // The hold applies even to an item that is otherwise always tradable
-        {
-          name: 'Item',
-          attributes: {
-            'always tradable': {
-              attribute_class: 'always_tradable',
-              value: '1',
-            },
-          },
-        },
+        alwaysTradable,
       );
 
       expect(parsed.tradable).toEqual(false);
     });
 
-    it('will make an item tradable once its tradable after date has passed', async () => {
+    it('will make items tradable after their tradable after date', async () => {
       const parsed = await parse({ attribute: [uint32Attribute(211, 1)] });
 
       expect(parsed.tradable).toEqual(true);
-    });
-
-    it('will not make a temporary item tradable or craftable', async () => {
-      const nextWeek = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
-
-      const parsed = await parse({
-        attribute: [uint32Attribute(302, nextWeek)],
-      });
-
-      expect(parsed.tradable).toEqual(false);
-      expect(parsed.craftable).toEqual(false);
-    });
-
-    it('will not make an item whose definition expires tradable or craftable', async () => {
-      // The definition holds a timestamp, never '1'
-      const parsed = await parse(
-        {},
-        {
-          name: 'Item',
-          static_attrs: { 'expiration date': '1735689600' },
-        },
-      );
-
-      expect(parsed.tradable).toEqual(false);
-      expect(parsed.craftable).toEqual(false);
-    });
-
-    it('will take the target and tier of a single-target kit from its definition', async () => {
-      // Frontier Justice Killstreakifier Basic: econ reads killstreak 1, target 141
-      const parsed = await parse(
-        { def_index: 5751 },
-        {
-          name: 'Frontier Justice Killstreakifier Basic',
-          attributes: {
-            'never craftable': {
-              attribute_class: 'never_craftable',
-              value: '1',
-            },
-            'killstreak tier': {
-              attribute_class: 'killstreak_tier',
-              value: '1',
-            },
-          },
-          static_attrs: { 'tool target item': '141' },
-        },
-      );
-
-      expect(parsed.target).toEqual(141);
-      expect(parsed.killstreak).toEqual(1);
-      expect(parsed.craftable).toEqual(false);
-    });
-
-    it('will take the target of a single-target strangifier from its definition', async () => {
-      // Third Degree Strangifier: econ reads target 593
-      const parsed = await parse(
-        { def_index: 5784 },
-        {
-          name: 'Third Degree Strangifier',
-          static_attrs: { 'is commodity': '1', 'tool target item': '593' },
-        },
-      );
-
-      expect(parsed.target).toEqual(593);
-    });
-
-    it('will take the wear of a war paint from its definition when the item has none', async () => {
-      // Autumn Mk.II War Paint (Factory New) arrives without attribute 725
-      const parsed = await parse(
-        { def_index: 16160, quality: 15 },
-        {
-          name: 'Paintkit 160',
-          static_attrs: {
-            texture_wear_default: '0',
-            paintkit_proto_def_index: '160',
-          },
-        },
-      );
-
-      expect(parsed.paintkit).toEqual(160);
-      expect(parsed.wear).toEqual(1);
-    });
-
-    it('will keep the wear an item states over its definition default', async () => {
-      const parsed = await parse(
-        {
-          def_index: 16391,
-          quality: 15,
-          attribute: [floatAttribute(725, 0.8)],
-        },
-        {
-          name: 'Paintkit 391',
-          static_attrs: {
-            texture_wear_default: '0',
-            paintkit_proto_def_index: '391',
-          },
-        },
-      );
-
-      expect(parsed.wear).toEqual(4);
-    });
-
-    it('will keep a decorated weapon from a quest (origin 24) tradable', async () => {
-      // Steam reads two such weapons as tradable; origin 24 is not an untradable loaner by itself
-      const parsed = await parse({ def_index: 15050, quality: 15, origin: 24 });
-
-      expect(parsed.tradable).toEqual(true);
-    });
-
-    it('will take the crate series from the definition attributes', async () => {
-      // Supply Crate Ration 6 states its series as an attribute, not a static attribute
-      const parsed = await parse(
-        { def_index: 5802 },
-        {
-          name: 'Supply Crate Ration 6',
-          attributes: {
-            'set supply crate series': {
-              attribute_class: 'supply_crate_series',
-              value: '91',
-            },
-          },
-        },
-      );
-
-      expect(parsed.crateSeries).toEqual(91);
     });
   });
 });

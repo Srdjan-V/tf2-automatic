@@ -151,11 +151,10 @@ export class ManageListingsService {
 
     const transaction = this.redis.multi();
 
-    // Remove hashes from create queue
-    transaction.zrem(
-      ManageListingsService.getCreateKey(event.steamid),
-      ...hashes,
-    );
+    // Remove hashes from create and update queues
+    transaction
+      .zrem(ManageListingsService.getCreateKey(event.steamid), ...hashes)
+      .zrem(ManageListingsService.getUpdateKey(event.steamid), ...hashes);
 
     const ids = event.desired
       .map((d) => d.getID())
@@ -203,8 +202,7 @@ export class ManageListingsService {
 
     const transaction = this.redis.multi();
 
-    // Listing ids are deterministic (per item / asset), so a listing that was just (re)created can
-    // still be queued for deletion from when its desired listing was removed; it is desired again
+    // Recreated listings can still be queued for deletion
     transaction
       .srem(ManageListingsService.getDeleteKey(event.steamid), ...ids)
       .srem(ManageListingsService.getArchivedDeleteKey(event.steamid), ...ids);
@@ -301,8 +299,7 @@ export class ManageListingsService {
         break;
     }
 
-    // A job with the same id that is already running makes queue.add a no-op, so flag that there is
-    // new work; the running job re-queues itself on completion when the flag is set
+    // A running job re-queues itself when this is set
     await this.redis.set(ManageListingsService.getPendingKey(steamid, type), 1);
 
     const data: JobData = {
@@ -317,22 +314,14 @@ export class ManageListingsService {
     await this.queue.add(type, data, opts);
   }
 
-  /**
-   * Clears the pending flag of a job type, called when a job of that type starts
-   */
   async clearPending(steamid: SteamID, type: ManageJobType): Promise<void> {
     await this.redis.del(ManageListingsService.getPendingKey(steamid, type));
   }
 
-  /**
-   * True when a job of that type was requested after the running one started
-   */
+  // True when a job was requested after the running one started
   async isPending(steamid: SteamID, type: ManageJobType): Promise<boolean> {
-    return (
-      (await this.redis.exists(
-        ManageListingsService.getPendingKey(steamid, type),
-      )) === 1
-    );
+    const key = ManageListingsService.getPendingKey(steamid, type);
+    return (await this.redis.exists(key)) === 1;
   }
 
   @OnEvent('current-listings.refreshed', {
@@ -373,8 +362,6 @@ export class ManageListingsService {
     steamid: SteamID,
     count: number,
   ): Promise<string[]> {
-    await this.listingLimitsService.waitForRefresh(steamid);
-
     const limits = await this.listingLimitsService.getLimits(steamid);
 
     // Prioritize updating listings over creating new ones
@@ -391,8 +378,9 @@ export class ManageListingsService {
     const originalKey = ManageListingsService.getCreateKey(steamid);
     const copyKey = originalKey + ':copy';
 
-    // REPLACE: a copy left behind by a crashed job would otherwise make the copy a no-op
-    await this.redis.copy(originalKey, copyKey, 'REPLACE');
+    // Remove a copy left behind by a crashed job
+    await this.redis.del(copyKey);
+    await this.redis.copy(originalKey, copyKey);
 
     if (desiredHashes.length > 0) {
       // Check if the desired listings are already in the queue
@@ -442,8 +430,6 @@ export class ManageListingsService {
     steamid: SteamID,
     count: number,
   ): Promise<string[]> {
-    await this.listingLimitsService.waitForRefresh(steamid);
-
     return this.redis.zrange(
       ManageListingsService.getUpdateKey(steamid),
       0,
@@ -555,13 +541,11 @@ export class ManageListingsService {
     await transaction.exec();
 
     this.logger.debug(
-      'Queued ' +
-        create.length +
-        ' listing(s) to be created, ' +
-        update.length +
-        ' listing(s) to be updated and ' +
-        remove.length +
-        ' listing(s) to be deleted',
+      ManageListingsService.describeQueued(
+        create.length,
+        update.length,
+        remove.length,
+      ),
     );
 
     const promises: Promise<unknown>[] = [];
@@ -596,6 +580,12 @@ export class ManageListingsService {
     const desired = Array.from(desiredMap.values());
 
     if (desired.length === 0) {
+      // The listings were removed, don't try to update them again
+      await this.redis.zrem(
+        ManageListingsService.getUpdateKey(new SteamID(token.steamid64)),
+        ...hashes,
+      );
+
       return {
         updated: [],
         errors: [],
@@ -726,8 +716,7 @@ export class ManageListingsService {
 
     const remove = new Set<string>();
 
-    // Hash -> change to persist. Applied to the stored desired listing (not this snapshot) and only
-    // while it still holds the id it had here, so concurrent writes are neither clobbered nor undone
+    // Hash -> change, only applied if the stored listing still has the same id
     const changes = new Map<string, { id: string; duplicate: boolean }>();
 
     // Go through all desired and check if the listing is still active
@@ -738,7 +727,7 @@ export class ManageListingsService {
       }
 
       if (d.getError() === ListingError.DuplicateListing) {
-        // The listing belongs to the desired listing it is a duplicate of, only drop the reference
+        // The listing belongs to another desired listing
         d.setID(null);
         changes.set(d.getHash(), { id, duplicate: false });
         return;
@@ -774,8 +763,7 @@ export class ManageListingsService {
         continue;
       }
 
-      // The listing stays with the first desired listing, the others are marked as duplicates of
-      // it (same as when duplicates are created in one batch)
+      // The first desired listing keeps the listing
       dupes.slice(1).forEach((d) => {
         d.setError(ListingError.DuplicateListing);
         d.setID(null);
@@ -888,13 +876,11 @@ export class ManageListingsService {
     );
 
     this.logger.debug(
-      'Queued ' +
-        create.size +
-        ' listing(s) to be created, ' +
-        update.size +
-        ' listing(s) to be updated and ' +
-        remove.size +
-        ' listing(s) to be deleted',
+      ManageListingsService.describeQueued(
+        create.size,
+        update.size,
+        remove.size,
+      ),
     );
 
     const promises: Promise<unknown>[] = [];
@@ -914,6 +900,23 @@ export class ManageListingsService {
 
     // Create jobs
     await Promise.all(promises);
+  }
+
+  // Only mentions what changes, e.g. "Queued 10 to be created, 2 to be updated"
+  static describeQueued(create: number, update: number, remove: number) {
+    const parts = (
+      [
+        [create, 'created'],
+        [update, 'updated'],
+        [remove, 'deleted'],
+      ] as const
+    )
+      .filter(([count]) => count > 0)
+      .map(([count, action]) => `${count} to be ${action}`);
+
+    return parts.length === 0
+      ? 'Queued no listing changes'
+      : 'Queued ' + parts.join(', ');
   }
 
   private static compareCurrentAndDesired(

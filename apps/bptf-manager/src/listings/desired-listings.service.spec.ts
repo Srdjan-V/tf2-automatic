@@ -369,8 +369,8 @@ describe('DesiredListingsService', () => {
         '200',
       );
 
-      mockRedis.hkeys = jest
-        .fn()
+      jest
+        .spyOn(DesiredListingsService.prototype, 'getAllDesiredHashes')
         .mockResolvedValue([kept.getHash(), removed.getHash()]);
 
       jest
@@ -417,49 +417,54 @@ describe('DesiredListingsService', () => {
         { steamid, desired: [removed] },
       );
     });
-  });
 
-  describe('Clearing desired', () => {
-    it('should remove every stored desired listing', async () => {
+    it('should remove all desired listings when set is empty', async () => {
       const steamid = new SteamID('76561198120070906');
 
       const existing = new DesiredListing(
         steamid,
         { id: '1', currencies: { keys: 1 } },
         0,
-      );
+      ).setID('100');
 
-      mockRedis.hkeys = jest.fn().mockResolvedValue([existing.getHash()]);
+      jest
+        .spyOn(DesiredListingsService.prototype, 'getAllDesiredHashes')
+        .mockResolvedValue([existing.getHash()]);
 
       jest
         .spyOn(DesiredListingsService.prototype, 'getDesiredByHashes')
         .mockResolvedValue(new Map([[existing.getHash(), existing]]));
 
-      const result = await service.clearDesired(steamid);
+      const result = await service.setDesired(steamid, []);
 
       expectMockUsing(steamid, [existing.getHash()]);
 
-      expect(result).toEqual([existing]);
+      expect(result).toEqual([]);
+      expect(mockRedis.hset).toHaveBeenCalledTimes(0);
       expect(mockRedis.hdel).toHaveBeenCalledWith(
         'listings:desired:' + steamid.getSteamID64(),
         existing.getHash(),
       );
+      expect(mockEventEmitter.emit).toHaveBeenCalledTimes(1);
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
         'desired-listings.removed',
         { steamid, desired: [existing] },
       );
     });
 
-    it('should do nothing when there are no desired listings', async () => {
+    it('should do nothing when set and stored listings are empty', async () => {
       const steamid = new SteamID('76561198120070906');
 
-      mockRedis.hkeys = jest.fn().mockResolvedValue([]);
+      jest
+        .spyOn(DesiredListingsService.prototype, 'getAllDesiredHashes')
+        .mockResolvedValue([]);
 
-      const result = await service.clearDesired(steamid);
+      const result = await service.setDesired(steamid, []);
 
       expect(result).toEqual([]);
       expect(mock.redlock.using).toHaveBeenCalledTimes(0);
       expect(mockRedis.exec).toHaveBeenCalledTimes(0);
+      expect(mockEventEmitter.emit).toHaveBeenCalledTimes(0);
     });
   });
 

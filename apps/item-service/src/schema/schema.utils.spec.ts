@@ -2,60 +2,86 @@ import { ItemsGameItem } from '@tf2-automatic/item-service-data';
 import { mergeDefinitionPrefab } from './schema.utils';
 
 describe('mergeDefinitionPrefab', () => {
-  // Trimmed from items_game: "Results Are In Taunt" (1109) uses the two prefabs "valve taunt".
   const prefabs: Record<string, Partial<ItemsGameItem>> = {
-    valve: { item_quality: 'unique' },
-    taunt: {
-      item_class: 'no_entity',
-      capabilities: { nameable: '1', can_craft_if_purchased: '1' },
+    cosmetic: {
+      item_class: 'tf_wearable',
+      item_slot: 'misc',
+      capabilities: {
+        nameable: '1',
+        can_craft_if_purchased: '1',
+      },
+    },
+    base_hat: {
+      item_slot: 'hat',
+    },
+    hat: {
+      prefab: 'cosmetic base_hat',
+      item_slot: 'head',
+    },
+    valve: {
+      item_quality: 'unique',
     },
   };
 
-  it('keeps what every one of several prefabs gives', () => {
+  it('will merge a single prefab', () => {
+    const item: Partial<ItemsGameItem> = {};
+
+    mergeDefinitionPrefab(item, { prefab: 'valve', name: 'Item' }, prefabs);
+
+    expect(item).toEqual({ item_quality: 'unique', name: 'Item' });
+  });
+
+  it('will merge multiple prefabs', () => {
     const item: Partial<ItemsGameItem> = {};
 
     mergeDefinitionPrefab(
       item,
-      { name: 'Results Are In Taunt', prefab: 'valve taunt' },
+      { prefab: 'cosmetic valve', name: 'Item' },
       prefabs,
     );
 
     expect(item).toEqual({
-      name: 'Results Are In Taunt',
+      item_class: 'tf_wearable',
+      item_slot: 'misc',
       item_quality: 'unique',
-      item_class: 'no_entity',
-      capabilities: { nameable: '1', can_craft_if_purchased: '1' },
+      capabilities: {
+        nameable: '1',
+        can_craft_if_purchased: '1',
+      },
+      name: 'Item',
     });
   });
 
-  it('lets the first of several prefabs win, and the item win over both', () => {
+  it('will merge multiple prefabs inherited through a prefab', () => {
     const item: Partial<ItemsGameItem> = {};
 
     mergeDefinitionPrefab(
       item,
-      { name: 'Item', prefab: 'first second', item_slot: 'misc' },
       {
-        first: { item_class: 'from_first', item_slot: 'from_first' },
-        second: { item_class: 'from_second', item_quality: 'from_second' },
+        prefab: 'hat',
+        name: 'Hong Kong Cone',
+        capabilities: { paintable: '1' },
       },
+      prefabs,
     );
 
     expect(item).toEqual({
-      name: 'Item',
-      item_class: 'from_first',
-      item_quality: 'from_second',
-      item_slot: 'misc',
+      item_class: 'tf_wearable',
+      item_slot: 'head',
+      capabilities: {
+        nameable: '1',
+        can_craft_if_purchased: '1',
+        paintable: '1',
+      },
+      name: 'Hong Kong Cone',
     });
   });
 
-  it('merges a single prefab', () => {
+  it('will let earlier prefabs override later ones', () => {
     const item: Partial<ItemsGameItem> = {};
 
-    mergeDefinitionPrefab(item, { name: 'Taunt', prefab: 'taunt' }, prefabs);
+    mergeDefinitionPrefab(item, { prefab: 'base_hat cosmetic' }, prefabs);
 
-    expect(item.capabilities).toEqual({
-      nameable: '1',
-      can_craft_if_purchased: '1',
-    });
+    expect(item.item_slot).toEqual('hat');
   });
 });

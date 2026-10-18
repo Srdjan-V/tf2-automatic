@@ -36,6 +36,7 @@ export class NotificationsService implements OnModuleDestroy {
   }
 
   async refreshNotifications(steamid: SteamID): Promise<void> {
+    // Gives every refresh its own temp key
     const time = Date.now();
 
     await this.producer.add(
@@ -88,8 +89,6 @@ export class NotificationsService implements OnModuleDestroy {
     const tempKey = key + ':' + time;
 
     if (response.results.length > 0) {
-      await this.saveTempNotifications(steamid, response.results);
-
       await this.redis
         .multi()
         .hmset(tempKey, this.mapNotifications(response.results))
@@ -127,25 +126,6 @@ export class NotificationsService implements OnModuleDestroy {
     await transaction.exec();
 
     await this.eventEmitter.emitAsync('notifications.refreshed', steamid);
-  }
-
-  private async saveTempNotifications(
-    steamid: SteamID,
-    notifications: Notification[],
-  ): Promise<void> {
-    if (notifications.length === 0) {
-      return;
-    }
-
-    const keys = await this.redis.keys(this.getKey(steamid) + ':*');
-
-    const transaction = this.redis.multi();
-
-    keys.forEach((key) => {
-      transaction.hmset(key, this.mapNotifications(notifications));
-    });
-
-    await transaction.exec();
   }
 
   private mapNotifications(
