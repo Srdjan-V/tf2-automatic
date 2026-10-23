@@ -25,7 +25,8 @@ export function toBottleneckSettings(
  * extend the block. Each failure doubles the wait from 30s up to 3 minutes.
  */
 export function backoffDelay(attempts: number): number {
-  return calculateBackoff(attempts, 'exponential', 30000, 180000);
+  // No jitter: every bot on the key reads the same stored backoff
+  return calculateBackoff(attempts, 'exponential', 30000, 180000, 0);
 }
 
 /** Backoff after failed inventory requests */
