@@ -77,6 +77,13 @@ export abstract class TF2Parser<
     };
   }
 
+  /**
+   * A raw wear float (0.2 Factory New .. 1.0 Battle Scarred) as its tier 1-5. 0 also reads as Factory New.
+   */
+  static wearTier(raw: number): number {
+    return raw === 0 ? 1 : Math.round(raw / 0.2);
+  }
+
   static extractSimpleAttribute(
     defindex: number,
     value: Buffer,
@@ -144,11 +151,9 @@ export abstract class TF2Parser<
       case 2027:
         result.australium = value.readFloatLE(0) > 0;
         break;
-      case 725: {
-        const raw = value.readFloatLE(0);
-        result.wear = raw === 0 ? 1 : Math.round(raw / 0.2);
+      case 725:
+        result.wear = TF2Parser.wearTier(value.readFloatLE(0));
         break;
-      }
       case 834:
         result.paintkit = value.readUInt32LE(0);
         break;

@@ -333,6 +333,54 @@ export class TF2GCParser extends TF2Parser<TF2GCItem, Context> {
     return true;
   }
 
+  /**
+   * Values TF2 keeps on the definition rather than the item, used when the item states none: a war
+   * paint's paintkit and wear, and the target and tier of a single-target strangifier or kit.
+   */
+  private static withDefinitionDefaults(
+    extracted: ExtractedTF2GCItem,
+    schemaItem: ItemsGameItem,
+  ): ExtractedTF2GCItem {
+    const result = { ...extracted };
+    const stated = (name: string) =>
+      TF2GCParser.definitionValue(name, schemaItem);
+
+    const paintkit = stated('paintkit_proto_def_index');
+    if (result.paintkit === null && paintkit !== undefined) {
+      result.paintkit = Number(paintkit);
+    }
+
+    const wear = stated('texture_wear_default');
+    if (
+      result.wear === null &&
+      result.paintkit !== null &&
+      wear !== undefined
+    ) {
+      result.wear = TF2Parser.wearTier(Number(wear));
+    }
+
+    const target = stated('tool target item');
+    if (result.target === null && target !== undefined) {
+      result.target = Number(target);
+    }
+
+    const tier = stated('killstreak tier');
+    if (result.killstreak === 0 && tier !== undefined) {
+      result.killstreak = Number(tier);
+    }
+
+    return result;
+  }
+
+  private static definitionValue(
+    name: string,
+    schemaItem: ItemsGameItem,
+  ): string | undefined {
+    return (
+      schemaItem.attributes?.[name]?.value ?? schemaItem.static_attrs?.[name]
+    );
+  }
+
   private static isTemporary(
     schemaItem: ItemsGameItem,
     context: Context,
@@ -391,25 +439,15 @@ export class TF2GCParser extends TF2Parser<TF2GCItem, Context> {
 
     let crateSeries: number | null = extracted.crateSeries;
     // TF2 GC may not provide crate series, so we have to manually retrieve it
-    if (
-      crateSeries === null &&
-      schemaItem.static_attrs &&
-      schemaItem.static_attrs['set supply crate series'] !== undefined
-    ) {
-      crateSeries = Number(schemaItem.static_attrs['set supply crate series']);
+    const definitionSeries = TF2GCParser.definitionValue(
+      'set supply crate series',
+      schemaItem,
+    );
+    if (crateSeries === null && definitionSeries !== undefined) {
+      crateSeries = Number(definitionSeries);
     }
 
-    // War paints have their paintkit on the definition, not on the item
-    if (
-      extracted.paintkit === null &&
-      schemaItem.static_attrs &&
-      schemaItem.static_attrs['paintkit_proto_def_index'] !== undefined
-    ) {
-      extracted = {
-        ...extracted,
-        paintkit: Number(schemaItem.static_attrs['paintkit_proto_def_index']),
-      };
-    }
+    extracted = TF2GCParser.withDefinitionDefaults(extracted, schemaItem);
 
     // Paint cans have their colour on the definition, not on the item
     const tint = schemaItem.attributes?.['set item tint RGB']?.value;
