@@ -184,4 +184,18 @@ describe('CustomWorkerHost', () => {
     await expect(processor.process(makeJob())).resolves.toBe('ok');
     expect(processor.failures).toHaveLength(0);
   });
+
+  it('calls onJobFailed when processJob throws before returning a promise', async () => {
+    class SyncThrowProcessor extends TestProcessor {
+      override processJob(): Promise<unknown> {
+        throw new Error('Thrown synchronously');
+      }
+    }
+    const processor = new SyncThrowProcessor();
+
+    await expect(processor.process(makeJob())).rejects.toThrow(
+      'Thrown synchronously',
+    );
+    expect(processor.failures).toHaveLength(1);
+  });
 });
