@@ -114,7 +114,10 @@ export abstract class CustomWorkerHost<
       throw err;
     }
 
-    return this.processJob(job)
+    // A processJob that throws before returning a promise still reaches the
+    // error handling below
+    return Promise.resolve()
+      .then(() => this.processJob(job))
       .catch(async (err) => {
         await this.preErrorHandler(job, err);
 
