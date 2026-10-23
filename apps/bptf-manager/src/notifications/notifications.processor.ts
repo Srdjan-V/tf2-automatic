@@ -3,13 +3,27 @@ import { ClsService } from 'nestjs-cls';
 import { AccountWorkerHost } from '../common/account-worker-host';
 import { bullWorkerSettings } from '@tf2-automatic/queue';
 import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 import { TokensService } from '../tokens/tokens.service';
 import SteamID from 'steamid';
 import { AxiosError } from 'axios';
 import { NotificationsService } from './notifications.service';
 import { JobData } from './interfaces/queue';
 import { RateLimitsService } from '../rate-limits/rate-limits.service';
+
+// A client error from backpack.tf won't change on a retry. 429 is handled by
+// the rate limiter before this
+export function failOnClientError(err: unknown): never {
+  const status = err instanceof AxiosError ? err.response?.status : undefined;
+
+  if (status !== undefined && [400, 401, 403, 404].includes(status)) {
+    throw new UnrecoverableError(
+      `Backpack.tf returned non-retryable status ${status}`,
+    );
+  }
+
+  throw err;
+}
 
 @Processor('notifications', {
   settings: bullWorkerSettings,
@@ -65,7 +79,8 @@ export class NotificationsProcessor extends AccountWorkerHost {
           .fetchNotifications(token, job.data.skip, job.data.limit)
           .catch((err) =>
             this.rateLimitsService.handleError('notificationsGet', key, err),
-          );
+          )
+          .catch(failOnClientError);
       },
     );
 
