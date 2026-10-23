@@ -32,7 +32,6 @@ describe('FriendsService', () => {
     service = new FriendsService(
       { getClient: () => client } as never,
       { publish: jest.fn().mockResolvedValue(undefined) } as never,
-      { set: jest.fn() } as never,
     );
   });
 
