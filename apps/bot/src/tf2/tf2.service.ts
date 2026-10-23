@@ -37,9 +37,11 @@ enum TaskType {
   Delete = 'DELETE',
   Sort = 'SORT',
   Refresh = 'REFRESH',
+  Backpack = 'BACKPACK',
 }
 
-type Task = CraftTask | UseTask | DeleteTask | SortTask | RefreshTask;
+type Task =
+  CraftTask | UseTask | DeleteTask | SortTask | RefreshTask | BackpackTask;
 
 type BaseTask = {
   type: TaskType;
@@ -67,6 +69,10 @@ type SortTask = BaseTask & {
 
 type RefreshTask = BaseTask & {
   type: TaskType.Refresh;
+};
+
+type BackpackTask = BaseTask & {
+  type: TaskType.Backpack;
 };
 
 class ItemNotInBackpackException extends BadRequestException {
@@ -202,6 +208,11 @@ export class TF2Service implements OnApplicationShutdown {
   private async process(task: Task): Promise<unknown> {
     this.logger.debug('Processing task: ' + task.type);
 
+    if (task.type === TaskType.Backpack) {
+      // Not after the steps below: they accept a stale backpack
+      return this.processBackpack();
+    }
+
     await this.connectToGC();
     await this.waitForBackpack();
 
@@ -329,12 +340,39 @@ export class TF2Service implements OnApplicationShutdown {
     return this.enqueue<TF2Service['processSortBackpack']>(task);
   }
 
-  getBackpack(): TF2Item[] {
-    if (this.tf2.backpack === undefined) {
-      throw new ServiceUnavailableException('Backpack not loaded');
+  /**
+   * Gets the backpack, connecting to the GC first when there is no session.
+   * The backpack kept from an earlier session is stale, so it is loaded again
+   */
+  async getBackpack(): Promise<TF2Item[]> {
+    if (this.tf2.haveGCSession && this.tf2.backpack !== undefined) {
+      return this.tf2.backpack;
     }
 
-    return this.tf2.backpack;
+    // Queued so the join can't cancel a refresh that is leaving the game
+    return this.enqueue<TF2Service['processBackpack']>({
+      type: TaskType.Backpack,
+    });
+  }
+
+  private async processBackpack(): Promise<TF2Item[]> {
+    if (!this.tf2.haveGCSession || this.tf2.backpack === undefined) {
+      // Listen before connecting, the backpack follows the GC welcome closely
+      const loaded = this.waitForEvent('backpackLoaded');
+
+      try {
+        await Promise.all([this.connectToGC(), loaded]);
+      } catch (err) {
+        loaded.catch(() => {
+          // The error is reported below
+        });
+        throw new ServiceUnavailableException(
+          'Backpack not loaded: ' + (err as Error).message,
+        );
+      }
+    }
+
+    return this.tf2.backpack as TF2Item[];
   }
 
   private async processSortBackpack(sort: SortBackpackTypes): Promise<void> {
@@ -358,30 +396,25 @@ export class TF2Service implements OnApplicationShutdown {
   }
 
   async connectToGC(): Promise<void> {
-    if (!this.isPlayingTF2()) {
-      // Not playing TF2
-      const joining = this.botService.joinGame(440);
-
-      if (!joining) {
-        throw new ServiceUnavailableException('Not playing TF2');
-      }
-    }
-
     if (this.tf2.haveGCSession) {
       // Already connected
       return;
     }
 
+    // Join even if TF2 is in the games played. Steam ignores that list while
+    // another session of the account plays a game, so it is sent again
+    const joining = this.botService.joinGame(440);
+
+    if (!joining) {
+      throw new ServiceUnavailableException('Not playing TF2');
+    }
+
     await this.waitForEvent('connectedToGC');
   }
 
-  isPlayingTF2(): boolean {
-    // @ts-expect-error This is a private property
-    return (this.client._playingAppIds as number[]).some((game) => game == 440);
-  }
-
   private isItemInBackpack(assetid: string): boolean {
-    return this.getBackpack().some((item) => item.id === assetid);
+    // Tasks wait for the backpack before they run
+    return (this.tf2.backpack ?? []).some((item) => item.id === assetid);
   }
 
   private async waitForBackpack(): Promise<void> {

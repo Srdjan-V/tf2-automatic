@@ -172,7 +172,7 @@ export class TF2Controller {
   @ApiOkResponse({
     type: [TF2ItemModel],
   })
-  getBackpack(): TF2Item[] {
+  getBackpack(): Promise<TF2Item[]> {
     return this.tf2Service.getBackpack();
   }
 }
