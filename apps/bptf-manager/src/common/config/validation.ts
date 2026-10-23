@@ -1,4 +1,4 @@
-import { getLockRules, Redis } from '@tf2-automatic/config';
+import { getLockRules, getOtelConfigRules, Redis } from '@tf2-automatic/config';
 import * as Joi from 'joi';
 
 const validation = Joi.object({
@@ -7,6 +7,7 @@ const validation = Joi.object({
   DEBUG: Joi.boolean().optional(),
   ...Redis.getRules(),
   ...getLockRules(),
+  ...getOtelConfigRules(),
   AGENTS_REGISTER_INTERVAL: Joi.number().positive().optional().min(60000),
   ...[
     'LISTINGS_BATCH',

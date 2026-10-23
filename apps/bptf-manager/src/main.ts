@@ -1,3 +1,4 @@
+import '@tf2-automatic/opentelemetry/instrumentation';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
@@ -9,13 +10,16 @@ import { AccountLogger } from './common/logger';
 import { getEnv } from '@tf2-automatic/config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    logger: new AccountLogger({
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+
+  app.useLogger(
+    new AccountLogger({
       logLevels: getEnv('DEBUG', 'boolean')
         ? ['log', 'debug', 'error', 'verbose', 'warn']
         : ['log', 'warn', 'error'],
     }),
-  });
+  );
+  app.flushLogs();
 
   const config = new DocumentBuilder()
     .setTitle('Backpack.tf manager API Documentation')
