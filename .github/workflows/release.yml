@@ -9,7 +9,12 @@ on:
       docker_projects:
         description: 'Docker projects to publish as a JSON array'
         required: false
-        default: '["bot","bot-manager","item-service","bptf-manager"]'
+        default: ''
+        type: string
+      docker_version:
+        description: 'Version to use for a manual Docker publish'
+        required: false
+        default: ''
         type: string
 
 permissions: {}
@@ -24,7 +29,7 @@ jobs:
     permissions:
       contents: write # push the tag and create the GitHub release
     needs: [affected]
-    if: needs.affected.outputs.docker != '[]' || needs.affected.outputs.npm != '[]'
+    if: github.event_name == 'workflow_dispatch' || needs.affected.outputs.docker != '[]' || needs.affected.outputs.npm != '[]'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,7 +62,7 @@ jobs:
       new_release_channel: ${{ steps.semantic.outputs.new_release_channel }}
   publish_to_docker:
     needs: [affected, release]
-    if: needs.release.outputs.new_release_published == 'true'
+    if: always() && (needs.release.outputs.new_release_published == 'true' || (github.event_name == 'workflow_dispatch' && inputs.docker_projects != '' && inputs.docker_version != ''))
     strategy:
       fail-fast: false
       matrix:
@@ -78,7 +83,7 @@ jobs:
       set-meta-labels: true
       build-args: |
         APP=${{ matrix.projectName }}
-        VERSION=${{ needs.release.outputs.new_release_version }}
+        VERSION=${{ needs.release.outputs.new_release_version || inputs.docker_version }}
       meta-images: ghcr.io/${{ github.repository_owner }}/${{ matrix.projectName }}
       meta-flavor: |
         latest=false
