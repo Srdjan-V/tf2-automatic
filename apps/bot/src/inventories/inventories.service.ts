@@ -36,6 +36,11 @@ import {
 // to the previous request, which the backoff also holds
 const MAX_BACKOFF_WAIT = 5000;
 
+// Bottleneck only frees a clustered slot when its job expires, so a bot that
+// stops mid-request would hold the shared slot forever. It covers the longest
+// backoff wait (3 minutes) plus the pages of a large inventory
+const SLOT_EXPIRATION = 5 * 60 * 1000;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, Math.max(ms, 0)));
 }
@@ -184,7 +189,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
     failFast = false,
   ): Promise<Inventory> {
     return this.limiter
-      .schedule(async () => {
+      .schedule({ expiration: SLOT_EXPIRATION }, async () => {
         this.settings = await this.sharedSettings();
 
         // A caller that retries 429s can fail fast instead of holding the
