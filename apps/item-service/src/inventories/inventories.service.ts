@@ -43,6 +43,7 @@ import { RedisService } from '@liaoliaots/nestjs-redis';
 import { pack, unpack } from 'msgpackr';
 import SteamID from 'steamid';
 import {
+  InventoryItemsResponse,
   InventoryJobOptions,
   InventoryLoadedEvent,
   InventoryResponse,
@@ -63,6 +64,7 @@ import {
 } from './inventories.types';
 import { ClsService } from 'nestjs-cls';
 import { getUserAgentOrThrow } from '@tf2-automatic/config';
+import { groupInventoryItems } from './inventory-items';
 
 export const INVENTORY_EXPIRE_TIME = 600;
 export const INVENTORY_TF2_LOAD_DELAY = 1000;
@@ -349,6 +351,18 @@ export class InventoriesService
     };
   }
 
+  async getInventoryItemDataFromCache(
+    steamid: SteamID,
+  ): Promise<InventoryItemsResponse> {
+    const inventory = await this.getInventoryItemsFromCache(steamid);
+
+    return {
+      timestamp: inventory.timestamp,
+      ttl: inventory.ttl,
+      items: groupInventoryItems(inventory.items),
+    };
+  }
+
   async getInventoryFromCacheAndExtractAttributes(
     steamid: SteamID,
     extract?: (keyof Item)[],
@@ -414,13 +428,43 @@ export class InventoriesService
     useCache = true,
     ttl = INVENTORY_EXPIRE_TIME,
   ): Promise<InventoryResponse> {
+    return this.fetchIntoCache(
+      steamid,
+      () => this.getInventoryFromCacheAndExtractAttributes(steamid, extract),
+      useCache,
+      ttl,
+    );
+  }
+
+  /**
+   * Like {@link fetchInventory}, as items with all attributes.
+   */
+  async fetchInventoryItems(
+    steamid: SteamID,
+    useCache = true,
+    ttl = INVENTORY_EXPIRE_TIME,
+  ): Promise<InventoryItemsResponse> {
+    return this.fetchIntoCache(
+      steamid,
+      () => this.getInventoryItemDataFromCache(steamid),
+      useCache,
+      ttl,
+    );
+  }
+
+  /**
+   * Reads the inventory from the cache, and loads it into the cache first when
+   * it is not there or the cache is not used.
+   */
+  private async fetchIntoCache<T>(
+    steamid: SteamID,
+    read: () => Promise<T>,
+    useCache: boolean,
+    ttl: number,
+  ): Promise<T> {
     if (useCache) {
       try {
-        const inventory = await this.getInventoryFromCacheAndExtractAttributes(
-          steamid,
-          extract,
-        );
-        return inventory;
+        return await read();
       } catch (err) {
         if (!(err instanceof NotFoundException)) {
           throw err;
@@ -435,7 +479,7 @@ export class InventoriesService
     // Wait for it to finish
     await this.queueManager.waitUntilFinished(job, 10000);
 
-    return this.getInventoryFromCacheAndExtractAttributes(steamid, extract);
+    return read();
   }
 
   async deleteInventory(steamid: SteamID): Promise<void> {

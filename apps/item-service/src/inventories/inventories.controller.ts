@@ -13,7 +13,9 @@ import {
   GetInventoryDto,
   INVENTORIES_BASE_PATH,
   INVENTORY_FETCH_PATH,
+  INVENTORY_ITEMS_PATH,
   INVENTORY_PATH,
+  InventoryItemsResponse,
   INVENTORY_QUEUE_PATH,
 } from '@tf2-automatic/item-service-data';
 import { ParseSteamIDPipe } from '@tf2-automatic/nestjs-steamid-pipe';
@@ -62,6 +64,19 @@ export class InventoriesController {
     @Query(new ValidationPipe({ transform: true })) dto: GetInventoryDto,
   ) {
     return this.inventoriesService.fetchInventory(steamid, dto.extract);
+  }
+
+  @Get(INVENTORY_ITEMS_PATH)
+  @ApiOperation({
+    summary: 'Fetch inventory items with all attributes',
+    description:
+      'Fetches an inventory like the fetch endpoint does, as items with every attribute set, each with the assets holding it.',
+  })
+  @ApiParamSteamID()
+  fetchInventoryItems(
+    @Param('steamid', ParseSteamIDPipe) steamid: SteamID,
+  ): Promise<InventoryItemsResponse> {
+    return this.inventoriesService.fetchInventoryItems(steamid);
   }
 
   @Get(INVENTORY_PATH)

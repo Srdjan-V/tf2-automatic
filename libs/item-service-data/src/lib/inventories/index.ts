@@ -17,12 +17,27 @@ export const INVENTORIES_PATH = '/';
 export const INVENTORY_PATH = '/:steamid';
 export const INVENTORY_QUEUE_PATH = `${INVENTORY_PATH}/queue`;
 export const INVENTORY_FETCH_PATH = `${INVENTORY_PATH}/fetch`;
+export const INVENTORY_ITEMS_PATH = `${INVENTORY_PATH}/items`;
 
 export interface InventoryResponse {
   timestamp: number;
   ttl: number;
   items: Record<string, string[]>;
   attributes: Record<string, Partial<Item>>;
+}
+
+/**
+ * Items with identical attributes, every attribute set, and the assets holding them.
+ */
+export type InventoryItemData = Item & {
+  sku: string;
+  assets: string[];
+};
+
+export interface InventoryItemsResponse {
+  timestamp: number;
+  ttl: number;
+  items: InventoryItemData[];
 }
 
 export const INVENTORY_EVENT_PREFIX = 'inventories';
