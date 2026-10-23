@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      docker_projects:
+        description: 'Docker projects to publish as a JSON array'
+        required: false
+        default: '["bot","bot-manager","item-service","bptf-manager"]'
+        type: string
 
 permissions: {}
 
@@ -51,11 +57,12 @@ jobs:
       new_release_channel: ${{ steps.semantic.outputs.new_release_channel }}
   publish_to_docker:
     needs: [affected, release]
-    if: needs.release.outputs.new_release_published == 'true' && needs.affected.outputs.docker != '[]'
+    if: needs.release.outputs.new_release_published == 'true'
     strategy:
       fail-fast: false
       matrix:
-        projectName: ${{ fromJson(needs.affected.outputs.docker) }}
+        # Manual input overrides Nx; push releases use the affected projects.
+        projectName: ${{ inputs.docker_projects != '' && fromJSON(inputs.docker_projects) || fromJSON(needs.affected.outputs.docker) }}
     permissions:
       contents: read
       id-token: write
