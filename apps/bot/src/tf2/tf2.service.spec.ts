@@ -108,6 +108,36 @@ describe('TF2Service', () => {
     });
   });
 
+  describe('backpack', () => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    beforeEach(() => bot.joinGame.mockReturnValue(true));
+
+    it('returns the backpack without joining again when connected', async () => {
+      (tf2 as any).haveGCSession = true;
+
+      await expect(service.getBackpack()).resolves.toEqual([{ id: '1' }]);
+      // Only the join from the constructor
+      expect(bot.joinGame).toHaveBeenCalledTimes(1);
+    });
+
+    it('joins again and loads a fresh backpack without a GC session', async () => {
+      // A backpack kept from an earlier session, while Steam ignored the join
+      (tf2 as any).haveGCSession = false;
+
+      const backpack = service.getBackpack();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(bot.joinGame).toHaveBeenCalledTimes(2);
+
+      (tf2 as any).haveGCSession = true;
+      tf2.emit('connectedToGC');
+      (tf2 as any).backpack = [{ id: 'fresh' }];
+      tf2.emit('backpackLoaded');
+
+      await expect(backpack).resolves.toEqual([{ id: 'fresh' }]);
+    });
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  });
+
   describe('event waiting', () => {
     /* eslint-disable @typescript-eslint/no-explicit-any */
     const waitForEvent = (...args: unknown[]) =>
