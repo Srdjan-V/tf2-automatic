@@ -285,8 +285,7 @@ export class ManageListingsProcessor extends AccountWorkerHost<
 
   @OnWorkerEvent('error')
   onError(err: Error): void {
-    this.logger.error('Error in worker');
-    console.error(err);
+    this.logger.error(`Error in worker: ${err.message}`, err.stack);
   }
 
   @OnWorkerEvent('failed')
@@ -294,9 +293,15 @@ export class ManageListingsProcessor extends AccountWorkerHost<
     this.logger.warn(`Failed to ${job.name} listings: ${err.message}`);
 
     if (err instanceof AxiosError) {
-      console.error(err.response?.data);
+      this.logger.warn(
+        `Listing request failed: ${JSON.stringify(err.response?.data)}`,
+        err.stack,
+      );
     } else {
-      console.error(err);
+      this.logger.warn(
+        'Listing request failed',
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 
@@ -313,8 +318,10 @@ export class ManageListingsProcessor extends AccountWorkerHost<
         await this.manageListingsService.createJob(steamid, job.name);
       }
     } catch (err) {
-      this.logger.error('Failed to create job');
-      console.error(err);
+      this.logger.error(
+        'Failed to create job',
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 }

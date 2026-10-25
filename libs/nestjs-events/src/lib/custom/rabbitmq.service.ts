@@ -86,7 +86,7 @@ export class RabbitMQEventsService
         return handler(msg);
       },
       messageOptions,
-      '',
+      `${name} (${exchange}:${events.join(',')})`,
     );
   }
 

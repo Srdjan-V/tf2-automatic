@@ -61,8 +61,7 @@ export class HeartbeatsProcessor extends WorkerHost {
 
   @OnWorkerEvent('error')
   onError(err: Error): void {
-    this.logger.error('Error in worker');
-    console.error(err);
+    this.logger.error(`Error in worker: ${err.message}`, err.stack);
   }
 
   @OnWorkerEvent('failed')

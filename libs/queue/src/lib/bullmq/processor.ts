@@ -140,8 +140,10 @@ export abstract class CustomWorkerHost<
           }
         } else if (err instanceof AssertionError) {
           // This is a bug in the code, not a recoverable error
-          this.logger.error('Assertion failed in worker');
-          console.error(err);
+          this.logger.error(
+            `Assertion failed in worker: ${err.message}`,
+            err.stack,
+          );
           throw new UnrecoverableError(err.message);
         }
 
@@ -180,15 +182,13 @@ export abstract class CustomWorkerHost<
     err: unknown,
   ): Promise<void> {
     return this.onJobFailed(job, err).catch((hookErr) => {
-      this.logger.error('Error in onJobFailed handler');
-      console.error(hookErr);
+      this.logger.error('Error in onJobFailed handler', hookErr?.stack);
     });
   }
 
   @OnWorkerEvent('error')
   private onError(err: Error): void {
-    this.logger.error('Error in worker');
-    console.error(err);
+    this.logger.error(`Error in worker: ${err.message}`, err.stack);
   }
 
   @OnWorkerEvent('failed')

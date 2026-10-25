@@ -62,8 +62,7 @@ export class ListingLimitsProcessor extends AccountWorkerHost {
 
   @OnWorkerEvent('error')
   onError(err: Error): void {
-    this.logger.error('Error in worker');
-    console.error(err);
+    this.logger.error(`Error in worker: ${err.message}`, err.stack);
   }
 
   @OnWorkerEvent('failed')
@@ -73,10 +72,15 @@ export class ListingLimitsProcessor extends AccountWorkerHost {
     );
 
     if (err instanceof AxiosError) {
-      console.error('Status code ' + err.response?.status);
-      console.error(err.response?.data);
+      this.logger.warn(
+        `Listing limits request failed with status ${err.response?.status}: ${JSON.stringify(err.response?.data)}`,
+        err.stack,
+      );
     } else {
-      console.error(err);
+      this.logger.warn(
+        'Listing limits request failed',
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 }

@@ -25,8 +25,11 @@ export class Subscriber<T extends BaseEvent<string>> {
 
   private readonly breaker = new CircuitBreaker(async (...args: [T]) => {
     return this.handler(...args).catch((err) => {
-      this.logger.error('Error in handler');
-      console.error(err);
+      const stack = err instanceof Error ? err.stack : String(err);
+      this.logger.error(
+        `Error in handler for "${this.name}" (${this.exchange}:${this.events.join(',')})`,
+        stack,
+      );
       throw err;
     });
   });

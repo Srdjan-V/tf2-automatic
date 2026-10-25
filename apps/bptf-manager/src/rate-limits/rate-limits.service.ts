@@ -121,15 +121,17 @@ export class RateLimitsService implements OnModuleInit, OnModuleDestroy {
                   key +
                   ' from group ' +
                   group.id,
+                err instanceof Error ? err.stack : String(err),
               );
-              console.error(err);
             });
 
           return;
         }
 
-        this.logger.warn('Limiter error for ' + key + ' for group ' + group.id);
-        console.error(err);
+        this.logger.warn(
+          'Limiter error for ' + key + ' for group ' + group.id,
+          err instanceof Error ? err.stack : String(err),
+        );
       });
     });
   }
