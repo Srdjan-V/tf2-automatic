@@ -96,21 +96,22 @@ export class OtelLoggerService extends ConsoleLogger {
       body = this.stringify(message);
     }
 
-    // Nest passes the logging context as the trailing string argument.
     let context = this.context;
-    const trailing = params[params.length - 1];
-    if (typeof trailing === 'string') {
-      context = trailing;
-    }
+    const isErrorLevel = level === 'error' || level === 'fatal';
 
-    // For error/fatal, a leading string argument is the stack trace.
-    if (
-      !stack &&
-      (level === 'error' || level === 'fatal') &&
-      params.length > 1 &&
-      typeof params[0] === 'string'
-    ) {
-      stack = params[0];
+    // Nest's error signature is error(message, stack?, context?). The first
+    // optional string is the stack, not the context; only a second string is
+    // the logging context.
+    if (isErrorLevel && typeof params[0] === 'string') {
+      stack ??= params[0];
+      if (typeof params[1] === 'string') {
+        context = params[1];
+      }
+    } else {
+      const trailing = params[params.length - 1];
+      if (typeof trailing === 'string') {
+        context = trailing;
+      }
     }
 
     const attributes: Record<string, string> = {
