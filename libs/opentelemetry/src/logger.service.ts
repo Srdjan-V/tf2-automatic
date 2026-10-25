@@ -60,6 +60,14 @@ export class OtelLoggerService extends ConsoleLogger {
     this.emitRecord('fatal', message, optionalParams);
   }
 
+  /**
+   * Additional attributes to attach to every exported OTLP log record.
+   * Subclasses can override this to provide request/job-specific context.
+   */
+  protected getAdditionalContext(): Record<string, string> {
+    return {};
+  }
+
   private getLogger(): OtelLogger {
     if (!this.otelLogger) {
       this.otelLogger = logs.getLogger('nestjs');
@@ -71,6 +79,7 @@ export class OtelLoggerService extends ConsoleLogger {
     level: NestLevel,
     message: unknown,
     params: unknown[],
+    extraAttributes: Record<string, string> = {},
   ): void {
     if (!this.emitEnabled) {
       return;
@@ -104,7 +113,10 @@ export class OtelLoggerService extends ConsoleLogger {
       stack = params[0];
     }
 
-    const attributes: Record<string, string> = {};
+    const attributes: Record<string, string> = {
+      ...this.getAdditionalContext(),
+      ...extraAttributes,
+    };
     if (context) {
       attributes['code.namespace'] = context;
     }
