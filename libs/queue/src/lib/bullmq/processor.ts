@@ -182,7 +182,10 @@ export abstract class CustomWorkerHost<
     err: unknown,
   ): Promise<void> {
     return this.onJobFailed(job, err).catch((hookErr) => {
-      this.logger.error('Error in onJobFailed handler', hookErr?.stack);
+      this.logger.error(
+        'Error in onJobFailed handler',
+        hookErr instanceof Error ? hookErr.stack : String(hookErr),
+      );
     });
   }
 
