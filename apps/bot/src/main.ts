@@ -47,7 +47,6 @@ async function bootstrap() {
   try {
     await app.init();
   } catch (err) {
-    console.error(err);
     Logger.error(
       'Failed to initialize application',
       err instanceof Error ? err.stack : String(err),
@@ -60,7 +59,6 @@ async function bootstrap() {
   try {
     await botService.start();
   } catch (err) {
-    console.error(err);
     Logger.error(
       'Failed to start bot',
       err instanceof Error ? err.stack : String(err),
