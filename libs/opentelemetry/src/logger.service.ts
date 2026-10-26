@@ -79,7 +79,6 @@ export class OtelLoggerService extends ConsoleLogger {
     level: NestLevel,
     message: unknown,
     params: unknown[],
-    extraAttributes: Record<string, string> = {},
   ): void {
     if (!this.emitEnabled) {
       return;
@@ -111,13 +110,15 @@ export class OtelLoggerService extends ConsoleLogger {
       const trailing = params[params.length - 1];
       if (typeof trailing === 'string') {
         context = trailing;
+        // The other levels have no stack slot, but callers pass one before
+        // the context: warn(message, stack, context).
+        if (params.length > 1 && typeof params[0] === 'string') {
+          stack ??= params[0];
+        }
       }
     }
 
-    const attributes: Record<string, string> = {
-      ...this.getAdditionalContext(),
-      ...extraAttributes,
-    };
+    const attributes: Record<string, string> = this.getAdditionalContext();
     if (context) {
       attributes['code.namespace'] = context;
     }
