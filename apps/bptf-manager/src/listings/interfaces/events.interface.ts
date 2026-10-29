@@ -23,7 +23,7 @@ export interface CurrentListingsCreatedEvent {
 
 export interface CurrentListingsCreateFailedEvent {
   steamid: SteamID;
-  errors: Record<string, ListingError>;
+  errors: Record<string, { error: ListingError; message?: string }>;
 }
 
 export interface CurrentListingsDeletedEvent {

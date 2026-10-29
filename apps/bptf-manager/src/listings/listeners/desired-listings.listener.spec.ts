@@ -69,7 +69,10 @@ describe('DesiredListingsListener', () => {
     await service.currentListingsFailed({
       steamid,
       errors: {
-        [desired.getHash()]: ListingError.ItemDoesNotExist,
+        [desired.getHash()]: {
+          error: ListingError.ItemDoesNotExist,
+          message: 'Item could not be resolved',
+        },
       },
     });
 
@@ -79,6 +82,7 @@ describe('DesiredListingsListener', () => {
       steamid64: steamid.getSteamID64(),
       listing: desired.getListing(),
       error: ListingError.ItemDoesNotExist,
+      errorMessage: 'Item could not be resolved',
       lastAttemptedAt: 0,
       updatedAt: 0,
     };

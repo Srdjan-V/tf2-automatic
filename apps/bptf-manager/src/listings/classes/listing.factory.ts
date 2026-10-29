@@ -25,7 +25,7 @@ export class ListingFactory {
     }
 
     if (desired.error) {
-      object.setError(desired.error);
+      object.setError(desired.error, desired.errorMessage);
     }
 
     if (desired.lastAttemptedAt) {

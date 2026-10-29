@@ -13,6 +13,7 @@ export class DesiredListing {
   private listing: AddListingDto;
   private priority: number | undefined;
   private error: ListingError | undefined;
+  private errorMessage: string | undefined;
   private lastAttemptedAt: number | undefined;
   private updatedAt: number;
 
@@ -59,8 +60,13 @@ export class DesiredListing {
     return this.error;
   }
 
-  setError(error: ListingError | undefined): this {
+  getErrorMessage(): string | undefined {
+    return this.errorMessage;
+  }
+
+  setError(error: ListingError | undefined, message?: string): this {
     this.error = error;
+    this.errorMessage = error === undefined ? undefined : message;
 
     return this;
   }
@@ -93,6 +99,7 @@ export class DesiredListing {
       listing: this.listing,
       priority: this.priority,
       error: this.error,
+      errorMessage: this.errorMessage,
       lastAttemptedAt: this.lastAttemptedAt,
       updatedAt: this.updatedAt,
     };
@@ -103,6 +110,10 @@ export class DesiredListing {
 
     if (this.error === undefined) {
       delete listing.error;
+    }
+
+    if (this.errorMessage === undefined) {
+      delete listing.errorMessage;
     }
 
     if (this.lastAttemptedAt === undefined) {

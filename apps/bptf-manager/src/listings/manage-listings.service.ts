@@ -257,7 +257,7 @@ export class ManageListingsService {
   private async failedCurrentListings(event: CurrentListingsCreateFailedEvent) {
     const found =
       Object.values(event.errors).findIndex(
-        (error) => error === ListingError.ItemDoesNotExist,
+        ({ error }) => error === ListingError.ItemDoesNotExist,
       ) !== -1;
 
     if (found) {

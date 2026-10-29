@@ -29,7 +29,8 @@ export class DesiredListingsListener {
         desired.forEach((d) => {
           d.setUpdatedAt(now);
           d.setLastAttemptedAt(now);
-          d.setError(event.errors[d.getHash()]);
+          const failure = event.errors[d.getHash()];
+          d.setError(failure.error, failure.message);
         }),
     );
   }

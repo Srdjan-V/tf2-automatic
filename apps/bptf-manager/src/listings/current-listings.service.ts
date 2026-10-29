@@ -340,7 +340,7 @@ export class CurrentListingsService {
     // Hash -> Listing
     const created: Record<string, Listing> = {};
     // Hash -> Error
-    const failed: Record<string, ListingError> = {};
+    const failed: CurrentListingsCreateFailedEvent['errors'] = {};
 
     // Listing ID -> Hash
     const ids: Record<string, string> = {};
@@ -363,7 +363,7 @@ export class CurrentListingsService {
           // Remove the previous listing
           delete created[previousHash];
           // Add the previous listing to failed
-          failed[previousHash] = ListingError.DuplicateListing;
+          failed[previousHash] = { error: ListingError.DuplicateListing };
         }
 
         created[hash] = result;
@@ -400,7 +400,7 @@ export class CurrentListingsService {
           error = ListingError.InvalidCurrencies;
         }
 
-        failed[hash] = error;
+        failed[hash] = { error, message: errorMessage || undefined };
       }
     }
 

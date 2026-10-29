@@ -35,7 +35,7 @@ export class AddDesiredListing extends DesiredListing {
 
     const error = other.getError();
     if (error) {
-      this.setError(error);
+      this.setError(error, other.getErrorMessage());
     }
 
     const lastAttemptedAt = other.getLastAttemptedAt();
