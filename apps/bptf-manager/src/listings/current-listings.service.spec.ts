@@ -1,7 +1,7 @@
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { HttpService } from '@nestjs/axios';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Listing } from '@tf2-automatic/bptf-manager-data';
+import { Listing, ListingError } from '@tf2-automatic/bptf-manager-data';
 import { pack, unpack } from 'msgpackr';
 import SteamID from 'steamid';
 import { DesiredListing } from './classes/desired-listing.class';
@@ -73,6 +73,54 @@ describe('CurrentListingsService', () => {
     expect(id).toBe('L1');
     expect(unpack(saved)).toEqual({ ...current, currencies: { keys: 2 } });
     expect(Object.keys(temp.mock.calls[0][1])).toEqual(['L1']);
+  });
+
+  it('keeps the backpack.tf message of a failed create', async () => {
+    const transaction = { exec: jest.fn() };
+    const redis = { multi: () => transaction };
+    const emitAsync = jest.fn();
+
+    const service = new CurrentListingsService(
+      { getOrThrow: () => redis } as unknown as RedisService,
+      {} as HttpService,
+      { emitAsync } as unknown as EventEmitter2,
+      {
+        getLimits: jest.fn().mockResolvedValue({ cap: 10, used: 0 }),
+      } as unknown as ListingLimitsService,
+      {} as never,
+    );
+
+    const internals = service as unknown as {
+      _createListings: () => Promise<unknown>;
+      saveTempListings: () => Promise<void>;
+    };
+    jest
+      .spyOn(internals, '_createListings')
+      .mockResolvedValue([
+        { error: { message: 'Item could not be resolved' } },
+      ]);
+    jest.spyOn(internals, 'saveTempListings').mockResolvedValue(undefined);
+
+    const desired = new DesiredListing(
+      steamid,
+      { id: '1', currencies: { keys: 2 } },
+      0,
+    );
+
+    await service.createListings(
+      { steamid64: steamid.getSteamID64(), value: 'token' },
+      [desired],
+    );
+
+    expect(emitAsync).toHaveBeenCalledWith('current-listings.failed', {
+      steamid,
+      errors: {
+        [desired.getHash()]: {
+          error: ListingError.ItemDoesNotExist,
+          message: 'Item could not be resolved',
+        },
+      },
+    });
   });
 
   it('does not re-add listings deleted while updating', async () => {
