@@ -49,7 +49,7 @@ import {
   GetExchangeDetailsDto,
   GetTradesDto,
 } from '@tf2-automatic/dto';
-import Bottleneck from 'bottleneck';
+import Bottleneck from '@sderrow/bottleneck';
 import CEconItem from 'steamcommunity/classes/CEconItem';
 import { GarbageCollectorService } from './gc.service';
 import { isFullPoll } from './helpers';

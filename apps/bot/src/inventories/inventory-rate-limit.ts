@@ -1,4 +1,4 @@
-import type { BottleneckOptions } from 'bottleneck';
+import type { BottleneckOptions } from '@sderrow/bottleneck';
 import Redis from 'ioredis';
 import { calculateBackoff } from '@tf2-automatic/utils';
 

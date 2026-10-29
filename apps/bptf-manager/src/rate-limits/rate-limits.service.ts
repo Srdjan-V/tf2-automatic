@@ -8,7 +8,10 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis as RedisConfig } from '@tf2-automatic/config';
 import { AxiosError } from 'axios';
-import Bottleneck, { type BottleneckOptions, type Group } from 'bottleneck';
+import Bottleneck, {
+  type BottleneckOptions,
+  type Group,
+} from '@sderrow/bottleneck';
 import { DelayedError, Job } from 'bullmq';
 import Redis from 'ioredis';
 import hash from 'object-hash';

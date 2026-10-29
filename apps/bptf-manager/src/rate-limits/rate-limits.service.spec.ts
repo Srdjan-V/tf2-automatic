@@ -1,4 +1,4 @@
-import Bottleneck from 'bottleneck';
+import Bottleneck from '@sderrow/bottleneck';
 import { AxiosError } from 'axios';
 import { DelayedError } from 'bullmq';
 import { RateLimitsService } from './rate-limits.service';
@@ -9,7 +9,7 @@ const mockLimiter = {
   schedule: jest.fn((fn: () => Promise<unknown>) => fn()),
 };
 
-jest.mock('bottleneck', () => ({
+jest.mock('@sderrow/bottleneck', () => ({
   __esModule: true,
   default: {
     Group: jest.fn().mockImplementation((options) => ({

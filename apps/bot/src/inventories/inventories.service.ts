@@ -13,7 +13,7 @@ import { BotService } from '../bot/bot.service';
 import { InventoryCallback } from 'steam-tradeoffer-manager';
 import SteamID from 'steamid';
 import { Inventory } from '@tf2-automatic/bot-data';
-import Bottleneck, { type BottleneckOptions } from 'bottleneck';
+import Bottleneck, { type BottleneckOptions } from '@sderrow/bottleneck';
 import Redis from 'ioredis';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { LockDuration, Locker } from '@tf2-automatic/locking';
