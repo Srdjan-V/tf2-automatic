@@ -279,9 +279,12 @@ export class InventoriesService {
   }
 
   async setRefreshPoint(steamid: SteamID, time: number): Promise<void> {
+    // Expires like the inventory so a chain that died can't leave it behind forever
     await this.redis.set(
       this.getInventoryRefreshPointKey(steamid.getSteamID64()),
       time,
+      'EX',
+      24 * 60 * 60,
     );
   }
 
