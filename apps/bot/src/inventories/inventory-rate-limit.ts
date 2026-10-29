@@ -1,4 +1,4 @@
-import Bottleneck from 'bottleneck';
+import type { BottleneckOptions } from 'bottleneck';
 import Redis from 'ioredis';
 import { calculateBackoff } from '@tf2-automatic/utils';
 
@@ -16,7 +16,7 @@ export function strictestSettings(all: RateLimitSettings[]): RateLimitSettings {
 
 export function toBottleneckSettings(
   settings: RateLimitSettings,
-): Bottleneck.ConstructorOptions {
+): BottleneckOptions {
   return { maxConcurrent: 1, minTime: settings.minTime };
 }
 

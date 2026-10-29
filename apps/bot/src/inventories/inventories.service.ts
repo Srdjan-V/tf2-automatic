@@ -13,7 +13,7 @@ import { BotService } from '../bot/bot.service';
 import { InventoryCallback } from 'steam-tradeoffer-manager';
 import SteamID from 'steamid';
 import { Inventory } from '@tf2-automatic/bot-data';
-import Bottleneck from 'bottleneck';
+import Bottleneck, { type BottleneckOptions } from 'bottleneck';
 import Redis from 'ioredis';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { LockDuration, Locker } from '@tf2-automatic/locking';
@@ -79,7 +79,7 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
     const config = configService.getOrThrow<InventoryConfig>('inventory');
     this.settings = { minTime: config.minTime };
 
-    const options: Bottleneck.ConstructorOptions = {
+    const options: BottleneckOptions = {
       ...toBottleneckSettings(this.settings),
       highWater: 3,
       strategy: Bottleneck.strategy.OVERFLOW,
@@ -109,13 +109,16 @@ export class InventoriesService implements OnModuleInit, OnModuleDestroy {
       ...options,
       id: key,
       datastore: 'ioredis',
+      Redis,
       clientOptions: {
         ...redisConfig,
         keyPrefix: redisConfig.keyPrefix + 'bottleneck:',
       },
     });
     this.limiter.on('error', (err) => {
-      this.logger.warn(`Inventory rate limiter error: ${err.message}`);
+      this.logger.warn(
+        `Inventory rate limiter error: ${err instanceof Error ? err.message : String(err)}`,
+      );
     });
     this.backoff = redisBackoff(redis, key);
     this.shared = {

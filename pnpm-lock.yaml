@@ -110,8 +110,8 @@ importers:
         specifier: ^1.19.0
         version: 1.19.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       bottleneck:
-        specifier: ^2.19.5
-        version: 2.19.5
+        specifier: npm:@sderrow/bottleneck@^4.2.0
+        version: '@sderrow/bottleneck@4.2.0(ioredis@5.11.1(supports-color@7.2.0))'
       bullmq:
         specifier: ^5.81.3
         version: 5.81.3(supports-color@7.2.0)
@@ -2796,6 +2796,18 @@ packages:
 
   '@scarf/scarf@1.4.0':
     resolution: {integrity: sha512-xxeapPiUXdZAE3che6f3xogoJPeZgig6omHEy1rIY5WVsB3H2BHNnZH+gHG6x91SCWyQCzWGsuL2Hh3ClO5/qQ==}
+
+  '@sderrow/bottleneck@4.2.0':
+    resolution: {integrity: sha512-jsc5zUui4HUc9E0R0m4aBl7R2P9PPNVLiM30HSD4gSvWll22ywltjLP0QeS7IKOc2mj76DdLDvPYH3tTSbrSIw==}
+    engines: {node: '>=16'}
+    peerDependencies:
+      ioredis: ^5 || ^6
+      redis: ^4 || ^5 || ^6
+    peerDependenciesMeta:
+      ioredis:
+        optional: true
+      redis:
+        optional: true
 
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
@@ -11740,6 +11752,10 @@ snapshots:
   '@protobufjs/utf8@1.1.2': {}
 
   '@scarf/scarf@1.4.0': {}
+
+  '@sderrow/bottleneck@4.2.0(ioredis@5.11.1(supports-color@7.2.0))':
+    optionalDependencies:
+      ioredis: 5.11.1(supports-color@7.2.0)
 
   '@sec-ant/readable-stream@0.4.1': {}
 

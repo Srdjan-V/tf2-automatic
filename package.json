@@ -107,7 +107,7 @@
     "@opentelemetry/sdk-trace-node": "^2.9.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "axios": "^1.19.0",
-    "bottleneck": "^2.19.5",
+    "bottleneck": "npm:@sderrow/bottleneck@^4.2.0",
     "bullmq": "^5.81.3",
     "cbor-x": "^1.6.6",
     "class-transformer": "^0.5.1",

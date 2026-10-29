@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis as RedisConfig } from '@tf2-automatic/config';
 import { AxiosError } from 'axios';
-import Bottleneck from 'bottleneck';
+import Bottleneck, { type BottleneckOptions, type Group } from 'bottleneck';
 import { DelayedError, Job } from 'bullmq';
 import Redis from 'ioredis';
 import hash from 'object-hash';
@@ -33,7 +33,7 @@ const RATE_LIMITED_ENDPOINTS: RateLimitedEndpoint[] = [
 function getLimiterOptions(
   endpoint: RateLimitedEndpoint,
   { requests, window }: RateLimitConfig,
-): Bottleneck.ConstructorOptions {
+): BottleneckOptions {
   return {
     id: endpoint,
     maxConcurrent: 1,
@@ -44,7 +44,7 @@ function getLimiterOptions(
   };
 }
 
-const DELETE_ALL_LIMITER: Bottleneck.ConstructorOptions = {
+const DELETE_ALL_LIMITER: BottleneckOptions = {
   id: 'deleteAll',
   maxConcurrent: 1,
   minTime: 60000,
@@ -57,11 +57,8 @@ export class RateLimitsService implements OnModuleInit, OnModuleDestroy {
   private readonly redis: Redis = this.redisService.getOrThrow();
 
   private readonly rateLimits: Record<RateLimitedEndpoint, RateLimitConfig>;
-  private readonly options: Record<
-    LimitedEndpoint,
-    Bottleneck.ConstructorOptions
-  >;
-  private groups: Record<LimitedEndpoint, Bottleneck.Group>;
+  private readonly options: Record<LimitedEndpoint, BottleneckOptions>;
+  private groups: Record<LimitedEndpoint, Group>;
 
   constructor(
     private readonly configService: ConfigService<Config>,
@@ -76,7 +73,7 @@ export class RateLimitsService implements OnModuleInit, OnModuleDestroy {
           endpoint,
           getLimiterOptions(endpoint, this.rateLimits[endpoint]),
         ]),
-      ) as Record<RateLimitedEndpoint, Bottleneck.ConstructorOptions>),
+      ) as Record<RateLimitedEndpoint, BottleneckOptions>),
       deleteAll: DELETE_ALL_LIMITER,
     };
 
@@ -91,6 +88,7 @@ export class RateLimitsService implements OnModuleInit, OnModuleDestroy {
       Object.entries(this.options).map(([endpoint, options]) => {
         const group = new Bottleneck.Group({
           datastore: 'ioredis',
+          Redis,
           clientOptions: {
             ...redisConfig,
             keyPrefix: redisConfig.keyPrefix + 'bottleneck:',
@@ -103,31 +101,12 @@ export class RateLimitsService implements OnModuleInit, OnModuleDestroy {
 
         return [endpoint, group];
       }),
-    ) as Record<LimitedEndpoint, Bottleneck.Group>;
+    ) as Record<LimitedEndpoint, Group>;
   }
 
-  private createGroupListeners(group: Bottleneck.Group): void {
+  private createGroupListeners(group: Group): void {
     group.on('created', (limiter, key) => {
       limiter.on('error', (err) => {
-        if (err.message === 'ERR SETTINGS_KEY_NOT_FOUND') {
-          group
-            .deleteKey(key)
-            .then(() => {
-              limiter.removeAllListeners();
-            })
-            .catch((err) => {
-              this.logger.warn(
-                'Failed to delete limiter key ' +
-                  key +
-                  ' from group ' +
-                  group.id,
-                err instanceof Error ? err.stack : String(err),
-              );
-            });
-
-          return;
-        }
-
         this.logger.warn(
           'Limiter error for ' + key + ' for group ' + group.id,
           err instanceof Error ? err.stack : String(err),
@@ -171,22 +150,13 @@ export class RateLimitsService implements OnModuleInit, OnModuleDestroy {
     task: () => Promise<T>,
   ): Promise<T> {
     const group = this.groups[endpoint];
-    let limiter = group.key(key);
+    const limiter = group.key(key);
     const options = this.options[endpoint];
 
     // Wait out a known rate limit window in one go instead of polling
     let delay = await this.redis.pttl(this.getRateLimitedKey(endpoint, key));
     if (delay <= 0) {
-      const reservoir = await limiter.currentReservoir().catch(async (err) => {
-        if (err.message !== 'ERR SETTINGS_KEY_NOT_FOUND') {
-          throw err;
-        }
-
-        // Bottleneck expired the idle key in Redis, start with a new limiter
-        await group.deleteKey(key);
-        limiter = group.key(key);
-        return limiter.currentReservoir();
-      });
+      const reservoir = await limiter.currentReservoir();
       const busy =
         reservoir === null ? !(await limiter.check()) : reservoir <= 0;
 

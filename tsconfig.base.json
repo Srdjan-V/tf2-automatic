@@ -18,6 +18,7 @@
     "strictNullChecks": true,
     "esModuleInterop": true,
     "paths": {
+      "bottleneck": ["node_modules/bottleneck/dist/index.d.mts"],
       "@tf2-automatic/bot-data": ["libs/bot-data/src/index.ts"],
       "@tf2-automatic/bot-manager-data": ["libs/bot-manager-data/src/index.ts"],
       "@tf2-automatic/bptf-manager-data": [
