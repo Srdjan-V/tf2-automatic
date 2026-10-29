@@ -178,6 +178,7 @@ export interface DesiredListing {
   listing: AddListingDto;
   priority?: number;
   error?: ListingError;
+  errorMessage?: string;
   lastAttemptedAt?: number;
   updatedAt: number;
 }
@@ -224,6 +225,14 @@ export class DesiredListingModel implements DesiredListing {
     enum: ListingError,
   })
   error?: ListingError;
+
+  @ApiProperty({
+    description:
+      'The message backpack.tf returned when the listing last failed to be created',
+    required: false,
+    example: 'Item could not be resolved',
+  })
+  errorMessage?: string;
 
   @ApiProperty({
     description:
