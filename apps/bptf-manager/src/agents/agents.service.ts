@@ -1,6 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { CreateAgentDto, Token, Agent } from '@tf2-automatic/bptf-manager-data';
 import { AgentResponse } from './interfaces/agent-response.interface';
@@ -13,15 +13,25 @@ import { TokensService } from '../tokens/tokens.service';
 import { ConfigService } from '@nestjs/config';
 import { AgentsConfig, Config } from '../common/config/configuration';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { getRepeatableJob } from '../common/utils';
 import { getJobs } from '@tf2-automatic/queue';
 import { LockDuration, Locker } from '@tf2-automatic/locking';
 import { pack, unpack } from 'msgpackr';
 
 const KEY = 'agents';
 
+function getSchedulerId(steamid64: string): string {
+  return `register_${steamid64}`;
+}
+
+// Pulses at a fixed point of the interval per account. The pulse triggers the
+// listings, notifications and limits fetches, so aligned accounts would all
+// hit backpack.tf in the same second and trip its per-IP limit
+export function getRegisterOffset(steamid64: string, every: number): number {
+  return Number(BigInt(steamid64) % BigInt(every));
+}
+
 @Injectable()
-export class AgentsService {
+export class AgentsService implements OnModuleInit {
   private readonly redis: Redis = this.redisService.getOrThrow();
   private readonly locker: Locker = new Locker(this.redis);
   private readonly logger = new Logger(AgentsService.name);
@@ -37,6 +47,20 @@ export class AgentsService {
     private readonly configService: ConfigService<Config>,
     private readonly eventEmitter: EventEmitter2,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    // Moves agents off the old repeatable job, whose offset BullMQ dropped
+    const agents = await this.getAgents();
+    await Promise.all(
+      agents.map((agent) =>
+        this.locker.using(
+          [`agents:${agent.steamid64}`],
+          LockDuration.SHORT,
+          () => this.scheduleRegister(agent.steamid64),
+        ),
+      ),
+    );
+  }
 
   async getAgents(): Promise<Agent[]> {
     const agents = await this.redis.hvalsBuffer(KEY);
@@ -86,32 +110,24 @@ export class AgentsService {
       async () => {
         const agent = await this.setAgent(steamid, dto);
 
-        const job = await this.getRepeatableJob(steamid);
-        if (job) {
-          // Job is already queued
+        const scheduler = await this.registerAgentsQueue.getJobScheduler(
+          getSchedulerId(steamid64),
+        );
+        if (scheduler) {
+          // Job is already scheduled
           return agent;
         }
 
         // Notify all listeners that the agent is registering
         await this.eventEmitter.emitAsync('agents.registering', steamid);
 
-        const every =
-          this.configService.getOrThrow<AgentsConfig>(
-            'agents',
-          ).registerInterval;
+        await this.scheduleRegister(steamid64);
 
+        // The schedule waits for the account's slot, so pulse once right away
         await this.registerAgentsQueue.add(
           steamid64,
-          {
-            steamid64,
-          },
-          {
-            jobId: `register_${steamid64}`,
-            repeat: {
-              every,
-              immediately: true,
-            },
-          },
+          { steamid64 },
+          { jobId: `pulse_${steamid64}` },
         );
 
         return agent;
@@ -167,12 +183,7 @@ export class AgentsService {
           return;
         }
 
-        // Remove repeatable job if one exists
-        await this.getRepeatableJob(steamid).then((job) => {
-          if (job) {
-            return this.registerAgentsQueue.removeRepeatableByKey(job.key);
-          }
-        });
+        await this.removeSchedulers(steamid.getSteamID64());
 
         // Remove all jobs for the agent
         await this.getJobs(steamid).then((jobs) => {
@@ -193,10 +204,30 @@ export class AgentsService {
     );
   }
 
-  private getRepeatableJob(steamid: SteamID) {
-    return getRepeatableJob(
-      this.registerAgentsQueue,
-      (job) => job.name === steamid.getSteamID64(),
+  private async scheduleRegister(steamid64: string): Promise<void> {
+    const every =
+      this.configService.getOrThrow<AgentsConfig>('agents').registerInterval;
+
+    await this.removeSchedulers(steamid64, getSchedulerId(steamid64));
+
+    await this.registerAgentsQueue.upsertJobScheduler(
+      getSchedulerId(steamid64),
+      { every, offset: getRegisterOffset(steamid64, every) },
+      { name: steamid64, data: { steamid64 } },
+    );
+  }
+
+  // Old repeatable jobs are listed as schedulers too, keyed by a hash
+  private async removeSchedulers(
+    steamid64: string,
+    keep?: string,
+  ): Promise<void> {
+    const schedulers = await this.registerAgentsQueue.getJobSchedulers();
+
+    await Promise.all(
+      schedulers
+        .filter((s) => s.name === steamid64 && s.key !== keep)
+        .map((s) => this.registerAgentsQueue.removeJobScheduler(s.key)),
     );
   }
 
