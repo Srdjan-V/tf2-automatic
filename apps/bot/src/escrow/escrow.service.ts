@@ -5,6 +5,7 @@ import { FriendsService } from '../friends/friends.service';
 import { TradesService } from '../trades/trades.service';
 import TradeOffer from 'steam-tradeoffer-manager/lib/classes/TradeOffer';
 import TradeOfferManager from 'steam-tradeoffer-manager';
+import { ETradeOfferState } from 'steam-user';
 
 type TradeHoldDuration = {
   escrow_end_duration_seconds?: number;
@@ -56,6 +57,11 @@ export class EscrowService {
         throw new BadRequestException(
           'Partner steamid does not match provided steamid',
         );
+      }
+
+      // Steam only shows the hold on an active offer, so a retry can never succeed
+      if (offer.state !== ETradeOfferState.Active) {
+        throw new BadRequestException('Offer is no longer active');
       }
       return offer;
     }
