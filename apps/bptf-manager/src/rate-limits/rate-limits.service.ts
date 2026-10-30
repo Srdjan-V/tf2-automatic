@@ -44,6 +44,10 @@ function getLimiterOptions(
     reservoirIncreaseAmount: requests,
     reservoirIncreaseInterval: window,
     reservoirIncreaseMaximum: requests,
+    // backpack.tf counts a sliding window, but the reservoir refills in fixed
+    // steps and could let a full reservoir through on each side of a step.
+    // Spacing the requests keeps any window at `requests`
+    minTime: Math.ceil(window / requests) + 1000,
   };
 }
 
@@ -160,15 +164,13 @@ export class RateLimitsService implements OnModuleInit, OnModuleDestroy {
     let delay = await this.redis.pttl(this.getRateLimitedKey(endpoint, key));
     if (delay <= 0) {
       const reservoir = await limiter.currentReservoir();
-      const busy =
-        reservoir === null ? !(await limiter.check()) : reservoir <= 0;
 
-      if (busy) {
+      if (reservoir !== null && reservoir <= 0) {
         // The reservoir refills at least once within its interval
-        delay = Math.max(
-          options.reservoirIncreaseInterval ?? options.minTime ?? 0,
-          1000,
-        );
+        delay = Math.max(options.reservoirIncreaseInterval ?? 0, 1000);
+      } else if (!(await limiter.check())) {
+        // Only the spacing between requests is left to wait out
+        delay = Math.max(options.minTime ?? 0, 1000);
       }
     }
 

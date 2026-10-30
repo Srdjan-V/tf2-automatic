@@ -6,6 +6,7 @@ import { RateLimitsService } from './rate-limits.service';
 const mockLimiter = {
   updateSettings: jest.fn(),
   currentReservoir: jest.fn(),
+  check: jest.fn().mockResolvedValue(true),
   schedule: jest.fn((fn: () => Promise<unknown>) => fn()),
 };
 
@@ -82,6 +83,8 @@ describe('RateLimitsService', () => {
         reservoirIncreaseAmount: 3,
         reservoirIncreaseInterval: 60000,
         reservoirIncreaseMaximum: 3,
+        // 3 per minute are spaced so no sliding minute holds a fourth
+        minTime: 21000,
       }),
     );
     expect(Group).toHaveBeenCalledWith(
@@ -147,8 +150,14 @@ describe('RateLimitsService', () => {
     expect(job.moveToDelayed).toHaveBeenLastCalledWith(31000, 'lock');
     expect(mockLimiter.schedule).not.toHaveBeenCalled();
 
-    // Requests left run right away
+    // Requests left still wait out the spacing to the previous one
     mockLimiter.currentReservoir.mockResolvedValue(1);
+    mockLimiter.check.mockResolvedValueOnce(false);
+    await expect(run()).rejects.toBeInstanceOf(DelayedError);
+    expect(job.moveToDelayed).toHaveBeenLastCalledWith(8000, 'lock');
+    expect(mockLimiter.schedule).not.toHaveBeenCalled();
+
+    // Requests left run right away once spaced
     await expect(run()).resolves.toBe(true);
 
     jest.restoreAllMocks();
